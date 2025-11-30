@@ -13,7 +13,14 @@
     "build": "cd frontend && npm run build",
     "start": "cd backend && npm start"
   },
-  "keywords": ["mascots", "pet-care", "daycare", "veterinary", "react", "node"],
+  "keywords": [
+    "mascots",
+    "pet-care",
+    "daycare",
+    "veterinary",
+    "react",
+    "node"
+  ],
   "author": "Equipo Arquitectura de Software",
   "license": "MIT",
   "devDependencies": {

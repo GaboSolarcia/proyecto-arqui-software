@@ -1,11 +1,51 @@
 import React, { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { Menu, X, Heart, Home as HomeIcon, Calendar, Stethoscope, UserCheck, Users, Home } from 'lucide-react';
+import logo from '../assets/logo.png';
 
 const Navbar = () => {
   const [isOpen, setIsOpen] = useState(false);
   const location = useLocation();
 
+  // leer rol
+  //  const role = localStorage.getItem('role');
+
+   /* menu admin
+ 
+ const navigationAdmin = [
+    { name: 'Inicio', href: '/', icon: HomeIcon },
+    { name: 'Habitaciones', href: '/rooms', icon: HomeIcon },
+    { name: 'Especialistas', href: '/specialists', icon: Users },
+    { name: 'Veterinarios', href: '/veterinarians', icon: Stethoscope },
+    { name: 'Dueños', href: '/owners', icon: UserCheck },
+  ];
+
+  // menu usuario
+
+    const navigationUser = [
+    { name: 'Inicio', href: '/', icon: HomeIcon },
+    { name: 'Registrar Mascota', href: '/pets/register', icon: Heart },
+    { name: 'Reservas', href: '/reservations', icon: Calendar },
+  ];
+
+  //seleccionar segun rol
+
+ const navigation =
+    role === 'admin' ? navigationAdmin : navigationUser;
+
+  const isActive = (path) => {
+    if (path === '/') return location.pathname === '/';
+    return location.pathname.startsWith(path);
+  };
+
+  // logout
+    const handleLogout = () => {
+    localStorage.clear();
+    window.location.href = '/login';
+  };
+
+  */
+ 
   const navigation = [
     { name: 'Inicio', href: '/', icon: HomeIcon },
     { name: 'Mascotas', href: '/pets', icon: Heart },
@@ -29,8 +69,12 @@ const Navbar = () => {
         <div className="flex justify-between items-center py-4">
           {/* Logo */}
           <Link to="/" className="flex items-center space-x-2">
-            <div className="bg-blue-500 p-2 rounded-lg">
-              <Heart className="h-6 w-6 text-white" />
+          <div className="bg-white p-2 rounded-lg">
+              <img
+                src={logo}
+                alt="logo cuidados los patitos"
+                className="h-6 w-6 object-contain"
+              />
             </div>
             <div>
               <span className="text-xl font-bold text-gray-800">Cuidados Los Patitos</span>

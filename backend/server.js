@@ -6,6 +6,7 @@ const dotenv = require('dotenv');
 const path = require('path');
 
 // Importar rutas
+const authRoutes = require('./routes/authRoutes');
 const petRoutes = require('./routes/petRoutes');
 const ownerRoutes = require('./routes/ownerRoutes');
 const veterinarianRoutes = require('./routes/veterinarianRoutes');
@@ -30,6 +31,7 @@ app.use(express.urlencoded({ extended: true })); // Parser URL encoded
 app.use(express.static(path.join(__dirname, 'public')));
 
 // Rutas de la API
+app.use('/api/auth', authRoutes);
 app.use('/api/pets', petRoutes);
 app.use('/api/owners', ownerRoutes);
 app.use('/api/veterinarians', veterinarianRoutes);

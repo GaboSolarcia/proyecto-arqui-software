@@ -88,6 +88,15 @@ CREATE TABLE Reservations (
 );
 GO
 
+CREATE TABLE Users (
+    Id            INT IDENTITY(1,1) PRIMARY KEY,
+    Email         NVARCHAR(150) NOT NULL UNIQUE,
+    PasswordHash  NVARCHAR(250) NOT NULL,
+    Role          NVARCHAR(50)  NOT NULL,   -- admin, usuario
+    CreatedAt     DATETIME2     NOT NULL DEFAULT SYSDATETIME()
+);
+GO
+
 
 -- ÍNDICES ÚTILES
 

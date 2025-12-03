@@ -1,67 +1,59 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Home, Plus, Search, Filter, AlertCircle } from 'lucide-react';
+import { Home, Plus, Search, Filter, AlertCircle, Edit } from 'lucide-react';
 
 const RoomList = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
   const [filterType, setFilterType] = useState('all');
+  const [rooms, setRooms] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
-  // Datos de ejemplo
-  const rooms = [
-    {
-      id: 1,
-      room_number: '101',
-      room_type: 'Habitación individual',
-      status: 'Disponible',
-      last_cleaning_date: '2025-11-24',
-      cleaned_by: 'María López',
-      maintenance_notes: null
-    },
-    {
-      id: 2,
-      room_number: '102',
-      room_type: 'Habitación individual con cámara',
-      status: 'Reservada',
-      last_cleaning_date: '2025-11-23',
-      cleaned_by: 'Juan Pérez',
-      maintenance_notes: null
-    },
-    {
-      id: 3,
-      room_number: '103',
-      room_type: 'Habitación de cuidados especiales',
-      status: 'Disponible',
-      last_cleaning_date: '2025-11-24',
-      cleaned_by: 'Ana Martínez',
-      maintenance_notes: null
-    },
-    {
-      id: 4,
-      room_number: '104',
-      room_type: 'Habitación individual',
-      status: 'En mantenimiento',
-      last_cleaning_date: '2025-11-20',
-      cleaned_by: 'Carlos Gómez',
-      maintenance_notes: [{ description: 'Reparación de puerta', date: '2025-11-23' }]
-    },
-    {
-      id: 5,
-      room_number: '105',
-      room_type: 'Habitación individual con cámara',
-      status: 'Cerrada',
-      last_cleaning_date: '2025-11-18',
-      cleaned_by: 'María López',
-      maintenance_notes: [{ description: 'Actualización de mobiliario', date: '2025-11-22' }]
+  useEffect(() => {
+    fetchRooms();
+  }, []);
+
+  const fetchRooms = async () => {
+    try {
+      setLoading(true);
+      const token = localStorage.getItem('authToken');
+      
+      if (!token) {
+        setError('No hay sesión activa');
+        setLoading(false);
+        return;
+      }
+
+      const response = await fetch('http://localhost:3001/api/rooms', {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        setRooms(data.data || []);
+      } else {
+        setError(data.message || 'Error al cargar habitaciones');
+      }
+    } catch (err) {
+      console.error('Error fetching rooms:', err);
+      setError('Error de conexión con el servidor');
+    } finally {
+      setLoading(false);
     }
-  ];
+  };
 
   const getStatusColor = (status) => {
     const colors = {
       'Disponible': 'bg-green-100 text-green-800 border-green-200',
-      'Reservada': 'bg-blue-100 text-blue-800 border-blue-200',
-      'En mantenimiento': 'bg-yellow-100 text-yellow-800 border-yellow-200',
-      'Cerrada': 'bg-red-100 text-red-800 border-red-200'
+      'Ocupada': 'bg-red-100 text-red-800 border-red-200',
+      'En Limpieza': 'bg-blue-100 text-blue-800 border-blue-200',
+      'En Mantenimiento': 'bg-yellow-100 text-yellow-800 border-yellow-200',
+      'Fuera de Servicio': 'bg-gray-100 text-gray-800 border-gray-200'
     };
     return colors[status] || 'bg-gray-100 text-gray-800 border-gray-200';
   };
@@ -73,20 +65,51 @@ const RoomList = () => {
   };
 
   const filteredRooms = rooms.filter(room => {
-    const matchesSearch = room.room_number.includes(searchTerm) ||
-                         room.room_type.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesStatus = filterStatus === 'all' || room.status === filterStatus;
-    const matchesType = filterType === 'all' || room.room_type === filterType;
+    const roomNumber = room.RoomNumber || room.room_number || '';
+    const roomType = room.RoomTypeName || room.room_type || '';
+    const status = room.StatusName || room.status || '';
+    
+    const matchesSearch = roomNumber.includes(searchTerm) ||
+                         roomType.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesStatus = filterStatus === 'all' || status === filterStatus;
+    const matchesType = filterType === 'all' || roomType === filterType;
     return matchesSearch && matchesStatus && matchesType;
   });
 
   const statistics = {
     total: rooms.length,
-    disponibles: rooms.filter(r => r.status === 'Disponible').length,
-    reservadas: rooms.filter(r => r.status === 'Reservada').length,
-    mantenimiento: rooms.filter(r => r.status === 'En mantenimiento').length,
-    cerradas: rooms.filter(r => r.status === 'Cerrada').length
+    disponibles: rooms.filter(r => (r.StatusName || r.status) === 'Disponible').length,
+    ocupadas: rooms.filter(r => (r.StatusName || r.status) === 'Ocupada').length,
+    enLimpieza: rooms.filter(r => (r.StatusName || r.status) === 'En Limpieza').length,
+    mantenimiento: rooms.filter(r => (r.StatusName || r.status) === 'En Mantenimiento').length,
+    fueraServicio: rooms.filter(r => (r.StatusName || r.status) === 'Fuera de Servicio').length
   };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Cargando habitaciones...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <AlertCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
+          <h3 className="text-lg font-medium text-gray-800 mb-2">Error al cargar habitaciones</h3>
+          <p className="text-gray-600 mb-4">{error}</p>
+          <button onClick={fetchRooms} className="btn-primary">
+            Reintentar
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-7xl mx-auto">
@@ -108,7 +131,7 @@ const RoomList = () => {
       </div>
 
       {/* Estadísticas */}
-      <div className="grid grid-cols-1 md:grid-cols-5 gap-6 mb-8">
+      <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-8">
         <div className="card">
           <div className="flex items-center justify-between">
             <div>
@@ -132,8 +155,19 @@ const RoomList = () => {
         <div className="card">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-gray-600">Reservadas</p>
-              <p className="text-2xl font-bold text-blue-600">{statistics.reservadas}</p>
+              <p className="text-sm text-gray-600">Ocupadas</p>
+              <p className="text-2xl font-bold text-red-600">{statistics.ocupadas}</p>
+            </div>
+            <div className="h-8 w-8 rounded-full bg-red-100 flex items-center justify-center">
+              <div className="h-4 w-4 rounded-full bg-red-600"></div>
+            </div>
+          </div>
+        </div>
+        <div className="card">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-gray-600">En Limpieza</p>
+              <p className="text-2xl font-bold text-blue-600">{statistics.enLimpieza}</p>
             </div>
             <div className="h-8 w-8 rounded-full bg-blue-100 flex items-center justify-center">
               <div className="h-4 w-4 rounded-full bg-blue-600"></div>
@@ -152,11 +186,11 @@ const RoomList = () => {
         <div className="card">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-gray-600">Cerradas</p>
-              <p className="text-2xl font-bold text-red-600">{statistics.cerradas}</p>
+              <p className="text-sm text-gray-600">Fuera Servicio</p>
+              <p className="text-2xl font-bold text-gray-600">{statistics.fueraServicio}</p>
             </div>
-            <div className="h-8 w-8 rounded-full bg-red-100 flex items-center justify-center">
-              <div className="h-4 w-4 rounded-full bg-red-600"></div>
+            <div className="h-8 w-8 rounded-full bg-gray-100 flex items-center justify-center">
+              <div className="h-4 w-4 rounded-full bg-gray-600"></div>
             </div>
           </div>
         </div>
@@ -185,9 +219,10 @@ const RoomList = () => {
             >
               <option value="all">Todos los estados</option>
               <option value="Disponible">Disponible</option>
-              <option value="Reservada">Reservada</option>
-              <option value="En mantenimiento">En mantenimiento</option>
-              <option value="Cerrada">Cerrada</option>
+              <option value="Ocupada">Ocupada</option>
+              <option value="En Limpieza">En Limpieza</option>
+              <option value="En Mantenimiento">En Mantenimiento</option>
+              <option value="Fuera de Servicio">Fuera de Servicio</option>
             </select>
           </div>
 
@@ -216,13 +251,13 @@ const RoomList = () => {
           </div>
         ) : (
           filteredRooms.map((room) => (
-            <div key={room.id} className="card hover:shadow-lg transition-shadow">
+            <div key={room.RoomId || room.id} className="card hover:shadow-lg transition-shadow">
               <div className="flex items-start justify-between mb-4">
                 <div className="flex items-center">
-                  <div className="text-3xl mr-3">{getTypeIcon(room.room_type)}</div>
+                  <div className="text-3xl mr-3">{getTypeIcon(room.RoomTypeName || room.room_type)}</div>
                   <div>
-                    <h3 className="text-xl font-bold text-gray-800">Habitación {room.room_number}</h3>
-                    <p className="text-sm text-gray-600">{room.room_type}</p>
+                    <h3 className="text-xl font-bold text-gray-800">Habitación {room.RoomNumber || room.room_number}</h3>
+                    <p className="text-sm text-gray-600">{room.RoomTypeName || room.room_type}</p>
                   </div>
                 </div>
               </div>
@@ -230,26 +265,30 @@ const RoomList = () => {
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-gray-600">Estado:</span>
-                  <span className={`px-3 py-1 rounded-full text-xs font-medium border ${getStatusColor(room.status)}`}>
-                    {room.status}
+                  <span className={`px-3 py-1 rounded-full text-xs font-medium border ${getStatusColor(room.StatusName || room.status)}`}>
+                    {room.StatusName || room.status}
                   </span>
                 </div>
 
-                <div className="border-t border-gray-200 pt-3">
-                  <p className="text-sm text-gray-600 mb-1">Última limpieza:</p>
-                  <p className="text-sm font-medium text-gray-800">
-                    {new Date(room.last_cleaning_date).toLocaleDateString('es-ES')}
-                  </p>
-                  <p className="text-xs text-gray-500">Por: {room.cleaned_by}</p>
-                </div>
+                {(room.LastCleaningDate || room.last_cleaning_date) && (
+                  <div className="border-t border-gray-200 pt-3">
+                    <p className="text-sm text-gray-600 mb-1">Última limpieza:</p>
+                    <p className="text-sm font-medium text-gray-800">
+                      {new Date(room.LastCleaningDate || room.last_cleaning_date).toLocaleDateString('es-ES')}
+                    </p>
+                    {(room.CleanedByName || room.cleaned_by) && (
+                      <p className="text-xs text-gray-500">Por: {room.CleanedByName || room.cleaned_by}</p>
+                    )}
+                  </div>
+                )}
 
-                {room.maintenance_notes && room.maintenance_notes.length > 0 && (
+                {(room.StatusName === 'En Mantenimiento' || room.status === 'En Mantenimiento') && room.MaintenanceNotes && (
                   <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
                     <div className="flex items-start">
                       <AlertCircle className="h-4 w-4 text-yellow-600 mr-2 mt-0.5" />
                       <div>
                         <p className="text-xs font-medium text-yellow-800">Mantenimiento pendiente</p>
-                        <p className="text-xs text-yellow-700">{room.maintenance_notes[0].description}</p>
+                        <p className="text-xs text-yellow-700">{room.MaintenanceNotes}</p>
                       </div>
                     </div>
                   </div>
@@ -258,14 +297,18 @@ const RoomList = () => {
 
               <div className="mt-4 pt-4 border-t border-gray-200 flex gap-2">
                 <Link 
-                  to={`/rooms/${room.id}`}
+                  to={`/rooms/${room.RoomId || room.id}`}
                   className="flex-1 text-center px-4 py-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition text-sm font-medium"
                 >
                   Ver Detalles
                 </Link>
-                <button className="px-4 py-2 bg-gray-50 text-gray-600 rounded-lg hover:bg-gray-100 transition text-sm font-medium">
+                <Link 
+                  to={`/rooms/${room.RoomId || room.id}`}
+                  className="flex items-center justify-center px-4 py-2 bg-gray-50 text-gray-600 rounded-lg hover:bg-gray-100 transition text-sm font-medium"
+                >
+                  <Edit className="h-4 w-4 mr-1" />
                   Editar
-                </button>
+                </Link>
               </div>
             </div>
           ))

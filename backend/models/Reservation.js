@@ -33,33 +33,99 @@ class Reservation {
     // Crear una nueva reserva
     static async create(reservationData) {
         try {
+            // Buscar IDs de los catálogos
+            const serviceTypeQuery = `SELECT ServiceTypeId FROM Cat_ServiceTypes WHERE ServiceName = @service_type`;
+            const serviceTypeResult = await executeQuery(serviceTypeQuery, { service_type: reservationData.service_type || 'Hospedaje Completo' });
+            const ServiceTypeId = serviceTypeResult.recordset[0]?.ServiceTypeId || 1;
+
+            const assistanceQuery = `SELECT AssistanceLevelId FROM Cat_AssistanceLevels WHERE LevelName = @level`;
+            const assistanceResult = await executeQuery(assistanceQuery, { level: reservationData.assistance_level || 'Asistencia básica' });
+            const AssistanceLevelId = assistanceResult.recordset[0]?.AssistanceLevelId || 1;
+
+            const scheduleQuery = `SELECT StayScheduleId FROM Cat_StaySchedules WHERE ScheduleName = @schedule`;
+            const scheduleResult = await executeQuery(scheduleQuery, { schedule: reservationData.stay_schedule || 'Full estancia' });
+            const StayScheduleId = scheduleResult.recordset[0]?.StayScheduleId || 1;
+
+            const statusQuery = `SELECT StatusId FROM Cat_ReservationStatuses WHERE StatusName = @status`;
+            const statusResult = await executeQuery(statusQuery, { status: reservationData.status || 'Pendiente' });
+            const StatusId = statusResult.recordset[0]?.StatusId || 1;
+
+            const paymentQuery = `SELECT PaymentStatusId FROM Cat_PaymentStatuses WHERE StatusName = @payment_status`;
+            const paymentResult = await executeQuery(paymentQuery, { payment_status: reservationData.payment_status || 'Pendiente' });
+            const PaymentStatusId = paymentResult.recordset[0]?.PaymentStatusId || 1;
+
+            // Buscar una habitación disponible del tipo solicitado
+            const roomTypeQuery = `SELECT RoomTypeId FROM Cat_RoomTypes WHERE RoomTypeName = @room_type`;
+            const roomTypeResult = await executeQuery(roomTypeQuery, { room_type: reservationData.room_type || 'Habitación individual' });
+            const RoomTypeId = roomTypeResult.recordset[0]?.RoomTypeId;
+
+            let RoomId = reservationData.room_id || null;
+            if (!RoomId && RoomTypeId) {
+                const availableRoomQuery = `
+                    SELECT TOP 1 r.RoomId
+                    FROM Rooms r
+                    INNER JOIN Cat_RoomStatuses rs ON r.RoomStatusId = rs.RoomStatusId
+                    WHERE r.RoomTypeId = @RoomTypeId AND rs.StatusName = 'Disponible'
+                    ORDER BY r.RoomNumber
+                `;
+                const availableRoomResult = await executeQuery(availableRoomQuery, { RoomTypeId });
+                RoomId = availableRoomResult.recordset[0]?.RoomId;
+            }
+
             const query = `
-                INSERT INTO Reservations (pet_id, start_date, end_date, is_indefinite, service_type, special_instructions, status, total_cost, payment_status, assistance_level, additional_packages, stay_schedule, room_type, room_id)
+                INSERT INTO Reservations (
+                    PetId, RoomId, ServiceTypeId, AssistanceLevelId, StayScheduleId,
+                    StartDate, EndDate, IsIndefinite, StatusId, PaymentStatusId,
+                    TotalCost, SpecialInstructions
+                )
                 OUTPUT INSERTED.*
-                VALUES (@pet_id, @start_date, @end_date, @is_indefinite, @service_type, @special_instructions, @status, @total_cost, @payment_status, @assistance_level, @additional_packages, @stay_schedule, @room_type, @room_id)
+                VALUES (
+                    @PetId, @RoomId, @ServiceTypeId, @AssistanceLevelId, @StayScheduleId,
+                    @StartDate, @EndDate, @IsIndefinite, @StatusId, @PaymentStatusId,
+                    @TotalCost, @SpecialInstructions
+                )
             `;
             
             const params = {
-                pet_id: reservationData.pet_id,
-                start_date: reservationData.start_date,
-                end_date: reservationData.is_indefinite ? null : reservationData.end_date,
-                is_indefinite: reservationData.is_indefinite || false,
-                service_type: reservationData.service_type || 'Guardería',
-                special_instructions: reservationData.special_instructions || null,
-                status: reservationData.status || 'Pendiente',
-                total_cost: reservationData.total_cost || 0,
-                payment_status: reservationData.payment_status || 'Pendiente',
-                assistance_level: reservationData.assistance_level || 'Asistencia básica',
-                additional_packages: typeof reservationData.additional_packages === 'object' 
-                    ? JSON.stringify(reservationData.additional_packages) 
-                    : reservationData.additional_packages || null,
-                stay_schedule: reservationData.stay_schedule || 'Full estancia',
-                room_type: reservationData.room_type || 'Habitación individual',
-                room_id: reservationData.room_id || null
+                PetId: reservationData.pet_id,
+                RoomId: RoomId,
+                ServiceTypeId: ServiceTypeId,
+                AssistanceLevelId: AssistanceLevelId,
+                StayScheduleId: StayScheduleId,
+                StartDate: reservationData.start_date,
+                EndDate: reservationData.is_indefinite ? null : (reservationData.end_date || null),
+                IsIndefinite: reservationData.is_indefinite || false,
+                StatusId: StatusId,
+                PaymentStatusId: PaymentStatusId,
+                TotalCost: reservationData.total_cost || 0,
+                SpecialInstructions: reservationData.special_instructions || null
             };
 
             const result = await executeQuery(query, params);
-            return new Reservation(result.recordset[0]);
+            const insertedData = result.recordset[0];
+            
+            // Mapear PascalCase a snake_case para el constructor
+            const mappedData = {
+                id: insertedData.ReservationId,
+                pet_id: insertedData.PetId,
+                room_id: insertedData.RoomId,
+                start_date: insertedData.StartDate,
+                end_date: insertedData.EndDate,
+                is_indefinite: insertedData.IsIndefinite,
+                service_type: reservationData.service_type,
+                special_instructions: insertedData.SpecialInstructions,
+                status: reservationData.status,
+                total_cost: insertedData.TotalCost,
+                payment_status: reservationData.payment_status,
+                assistance_level: reservationData.assistance_level,
+                additional_packages: reservationData.additional_packages,
+                stay_schedule: reservationData.stay_schedule,
+                room_type: reservationData.room_type,
+                created_at: insertedData.CreatedAt,
+                updated_at: insertedData.UpdatedAt
+            };
+            
+            return new Reservation(mappedData);
         } catch (error) {
             throw new Error(`Error creando reserva: ${error.message}`);
         }
@@ -69,15 +135,43 @@ class Reservation {
     static async findAll() {
         try {
             const query = `
-                SELECT r.*, p.name as pet_name, p.owner_name, p.owner_cedula, v.name as veterinarian_name
+                SELECT 
+                    r.ReservationId,
+                    r.PetId,
+                    p.Name AS PetName,
+                    r.RoomId,
+                    rm.RoomNumber,
+                    rt.RoomTypeName,
+                    r.StartDate,
+                    r.EndDate,
+                    r.IsIndefinite,
+                    r.StatusId,
+                    rs.StatusName,
+                    r.TotalCost,
+                    r.SpecialInstructions,
+                    r.CheckInDate,
+                    r.CheckOutDate,
+                    r.StayScheduleId,
+                    ss.ScheduleName AS StayScheduleName,
+                    r.AssistanceLevelId,
+                    al.LevelName AS AssistanceLevelName,
+                    o.Name AS OwnerName,
+                    o.Cedula AS OwnerCedula,
+                    r.CreatedAt,
+                    r.UpdatedAt
                 FROM Reservations r
-                INNER JOIN Pets p ON r.pet_id = p.id
-                LEFT JOIN Veterinarians v ON p.veterinarian_id = v.id
-                ORDER BY r.start_date DESC
+                INNER JOIN Pets p ON r.PetId = p.PetId
+                INNER JOIN Owners o ON p.OwnerId = o.OwnerId
+                LEFT JOIN Rooms rm ON r.RoomId = rm.RoomId
+                LEFT JOIN Cat_RoomTypes rt ON rm.RoomTypeId = rt.RoomTypeId
+                LEFT JOIN Cat_ReservationStatuses rs ON r.StatusId = rs.StatusId
+                LEFT JOIN Cat_StaySchedules ss ON r.StayScheduleId = ss.StayScheduleId
+                LEFT JOIN Cat_AssistanceLevels al ON r.AssistanceLevelId = al.AssistanceLevelId
+                ORDER BY r.CreatedAt DESC
             `;
             
             const result = await executeQuery(query);
-            return result.recordset.map(reservation => new Reservation(reservation));
+            return result.recordset;
         } catch (error) {
             throw new Error(`Error obteniendo reservas: ${error.message}`);
         }
@@ -87,11 +181,39 @@ class Reservation {
     static async findById(id) {
         try {
             const query = `
-                SELECT r.*, p.name as pet_name, p.owner_name, p.owner_cedula, v.name as veterinarian_name
+                SELECT 
+                    r.ReservationId,
+                    r.PetId,
+                    p.Name AS PetName,
+                    r.RoomId,
+                    rm.RoomNumber,
+                    rt.RoomTypeName,
+                    r.StartDate,
+                    r.EndDate,
+                    r.IsIndefinite,
+                    r.StatusId,
+                    rs.StatusName,
+                    r.TotalCost,
+                    r.SpecialInstructions,
+                    r.CheckInDate,
+                    r.CheckOutDate,
+                    r.StayScheduleId,
+                    ss.ScheduleName AS StayScheduleName,
+                    r.AssistanceLevelId,
+                    al.LevelName AS AssistanceLevelName,
+                    o.Name AS OwnerName,
+                    o.Cedula AS OwnerCedula,
+                    r.CreatedAt,
+                    r.UpdatedAt
                 FROM Reservations r
-                INNER JOIN Pets p ON r.pet_id = p.id
-                LEFT JOIN Veterinarians v ON p.veterinarian_id = v.id
-                WHERE r.id = @id
+                INNER JOIN Pets p ON r.PetId = p.PetId
+                INNER JOIN Owners o ON p.OwnerId = o.OwnerId
+                LEFT JOIN Rooms rm ON r.RoomId = rm.RoomId
+                LEFT JOIN Cat_RoomTypes rt ON rm.RoomTypeId = rt.RoomTypeId
+                LEFT JOIN Cat_ReservationStatuses rs ON r.StatusId = rs.StatusId
+                LEFT JOIN Cat_StaySchedules ss ON r.StayScheduleId = ss.StayScheduleId
+                LEFT JOIN Cat_AssistanceLevels al ON r.AssistanceLevelId = al.AssistanceLevelId
+                WHERE r.ReservationId = @id
             `;
             
             const result = await executeQuery(query, { id });
@@ -100,7 +222,7 @@ class Reservation {
                 return null;
             }
             
-            return new Reservation(result.recordset[0]);
+            return result.recordset[0];
         } catch (error) {
             throw new Error(`Error obteniendo reserva: ${error.message}`);
         }
@@ -110,15 +232,30 @@ class Reservation {
     static async findByPetId(petId) {
         try {
             const query = `
-                SELECT r.*, p.name as pet_name, p.owner_name, p.owner_cedula
+                SELECT 
+                    r.ReservationId,
+                    r.PetId,
+                    p.Name AS PetName,
+                    r.RoomId,
+                    rm.RoomNumber,
+                    r.StartDate,
+                    r.EndDate,
+                    r.StatusId,
+                    rs.StatusName,
+                    r.TotalCost,
+                    o.Name AS OwnerName,
+                    o.Cedula AS OwnerCedula
                 FROM Reservations r
-                INNER JOIN Pets p ON r.pet_id = p.id
-                WHERE r.pet_id = @pet_id
-                ORDER BY r.start_date DESC
+                INNER JOIN Pets p ON r.PetId = p.PetId
+                INNER JOIN Owners o ON p.OwnerId = o.OwnerId
+                LEFT JOIN Rooms rm ON r.RoomId = rm.RoomId
+                LEFT JOIN Cat_ReservationStatuses rs ON r.StatusId = rs.StatusId
+                WHERE r.PetId = @pet_id
+                ORDER BY r.CreatedAt DESC
             `;
             
             const result = await executeQuery(query, { pet_id: petId });
-            return result.recordset.map(reservation => new Reservation(reservation));
+            return result.recordset;
         } catch (error) {
             throw new Error(`Error obteniendo reservas por mascota: ${error.message}`);
         }
@@ -128,16 +265,30 @@ class Reservation {
     static async findByStatus(status) {
         try {
             const query = `
-                SELECT r.*, p.name as pet_name, p.owner_name, p.owner_cedula, v.name as veterinarian_name
+                SELECT 
+                    r.ReservationId,
+                    r.PetId,
+                    p.Name AS PetName,
+                    r.RoomId,
+                    rm.RoomNumber,
+                    r.StartDate,
+                    r.EndDate,
+                    r.StatusId,
+                    rs.StatusName,
+                    r.TotalCost,
+                    o.Name AS OwnerName,
+                    o.Cedula AS OwnerCedula
                 FROM Reservations r
-                INNER JOIN Pets p ON r.pet_id = p.id
-                LEFT JOIN Veterinarians v ON p.veterinarian_id = v.id
-                WHERE r.status = @status
-                ORDER BY r.start_date DESC
+                INNER JOIN Pets p ON r.PetId = p.PetId
+                INNER JOIN Owners o ON p.OwnerId = o.OwnerId
+                LEFT JOIN Rooms rm ON r.RoomId = rm.RoomId
+                INNER JOIN Cat_ReservationStatuses rs ON r.StatusId = rs.StatusId
+                WHERE rs.StatusName = @status
+                ORDER BY r.CreatedAt DESC
             `;
             
             const result = await executeQuery(query, { status });
-            return result.recordset.map(reservation => new Reservation(reservation));
+            return result.recordset;
         } catch (error) {
             throw new Error(`Error obteniendo reservas por estado: ${error.message}`);
         }
@@ -147,17 +298,31 @@ class Reservation {
     static async findActive() {
         try {
             const query = `
-                SELECT r.*, p.name as pet_name, p.owner_name, p.owner_cedula, v.name as veterinarian_name
+                SELECT 
+                    r.ReservationId,
+                    r.PetId,
+                    p.Name AS PetName,
+                    r.RoomId,
+                    rm.RoomNumber,
+                    r.StartDate,
+                    r.EndDate,
+                    r.StatusId,
+                    rs.StatusName,
+                    r.TotalCost,
+                    o.Name AS OwnerName,
+                    o.Cedula AS OwnerCedula
                 FROM Reservations r
-                INNER JOIN Pets p ON r.pet_id = p.id
-                LEFT JOIN Veterinarians v ON p.veterinarian_id = v.id
-                WHERE r.status = 'Activa' 
-                   OR (r.start_date <= GETDATE() AND r.end_date >= GETDATE() AND r.status = 'Confirmada')
-                ORDER BY r.start_date
+                INNER JOIN Pets p ON r.PetId = p.PetId
+                INNER JOIN Owners o ON p.OwnerId = o.OwnerId
+                LEFT JOIN Rooms rm ON r.RoomId = rm.RoomId
+                INNER JOIN Cat_ReservationStatuses rs ON r.StatusId = rs.StatusId
+                WHERE rs.StatusName IN ('Activa', 'Check-In')
+                   OR (r.StartDate <= GETDATE() AND r.EndDate >= GETDATE() AND rs.StatusName = 'Confirmada')
+                ORDER BY r.StartDate
             `;
             
             const result = await executeQuery(query);
-            return result.recordset.map(reservation => new Reservation(reservation));
+            return result.recordset;
         } catch (error) {
             throw new Error(`Error obteniendo reservas activas: ${error.message}`);
         }
@@ -167,19 +332,33 @@ class Reservation {
     static async findByDateRange(startDate, endDate) {
         try {
             const query = `
-                SELECT r.*, p.name as pet_name, p.owner_name, p.owner_cedula, v.name as veterinarian_name
+                SELECT 
+                    r.ReservationId,
+                    r.PetId,
+                    p.Name AS PetName,
+                    r.RoomId,
+                    rm.RoomNumber,
+                    r.StartDate,
+                    r.EndDate,
+                    r.StatusId,
+                    rs.StatusName,
+                    r.TotalCost,
+                    o.Name AS OwnerName,
+                    o.Cedula AS OwnerCedula
                 FROM Reservations r
-                INNER JOIN Pets p ON r.pet_id = p.id
-                LEFT JOIN Veterinarians v ON p.veterinarian_id = v.id
-                WHERE r.start_date >= @start_date AND r.end_date <= @end_date
-                ORDER BY r.start_date
+                INNER JOIN Pets p ON r.PetId = p.PetId
+                INNER JOIN Owners o ON p.OwnerId = o.OwnerId
+                LEFT JOIN Rooms rm ON r.RoomId = rm.RoomId
+                LEFT JOIN Cat_ReservationStatuses rs ON r.StatusId = rs.StatusId
+                WHERE r.StartDate >= @start_date AND r.EndDate <= @end_date
+                ORDER BY r.StartDate
             `;
             
             const result = await executeQuery(query, { 
                 start_date: startDate, 
                 end_date: endDate 
             });
-            return result.recordset.map(reservation => new Reservation(reservation));
+            return result.recordset;
         } catch (error) {
             throw new Error(`Error obteniendo reservas por rango de fechas: ${error.message}`);
         }
@@ -228,20 +407,47 @@ class Reservation {
     // Actualizar estado de la reserva
     static async updateStatus(id, status) {
         try {
+            // Buscar el StatusId del catálogo
+            const statusQuery = `SELECT StatusId FROM Cat_ReservationStatuses WHERE StatusName = @StatusName`;
+            const statusResult = await executeQuery(statusQuery, { StatusName: status });
+            
+            if (statusResult.recordset.length === 0) {
+                throw new Error(`Estado '${status}' no encontrado en el catálogo`);
+            }
+            
+            const StatusId = statusResult.recordset[0].StatusId;
+            
             const query = `
                 UPDATE Reservations 
-                SET status = @status, updated_at = GETDATE()
+                SET StatusId = @StatusId, UpdatedAt = GETDATE()
                 OUTPUT INSERTED.*
-                WHERE id = @id
+                WHERE ReservationId = @ReservationId
             `;
             
-            const result = await executeQuery(query, { id, status });
+            const result = await executeQuery(query, { ReservationId: id, StatusId });
             
             if (result.recordset.length === 0) {
                 return null;
             }
             
-            return new Reservation(result.recordset[0]);
+            // Mapear resultado a formato esperado por el constructor
+            const insertedData = result.recordset[0];
+            const mappedData = {
+                id: insertedData.ReservationId,
+                pet_id: insertedData.PetId,
+                room_id: insertedData.RoomId,
+                start_date: insertedData.StartDate,
+                end_date: insertedData.EndDate,
+                is_indefinite: insertedData.IsIndefinite,
+                service_type: status,
+                special_instructions: insertedData.SpecialInstructions,
+                status: status,
+                total_cost: insertedData.TotalCost,
+                created_at: insertedData.CreatedAt,
+                updated_at: insertedData.UpdatedAt
+            };
+            
+            return new Reservation(mappedData);
         } catch (error) {
             throw new Error(`Error actualizando estado de reserva: ${error.message}`);
         }
@@ -250,8 +456,8 @@ class Reservation {
     // Eliminar reserva
     static async delete(id) {
         try {
-            const query = 'DELETE FROM Reservations WHERE id = @id';
-            const result = await executeQuery(query, { id });
+            const query = 'DELETE FROM Reservations WHERE ReservationId = @ReservationId';
+            const result = await executeQuery(query, { ReservationId: id });
             return result.rowsAffected[0] > 0;
         } catch (error) {
             throw new Error(`Error eliminando reserva: ${error.message}`);
@@ -263,20 +469,21 @@ class Reservation {
         try {
             let query = `
                 SELECT COUNT(*) as conflicting_reservations
-                FROM Reservations 
+                FROM Reservations r
+                INNER JOIN Cat_ReservationStatuses rs ON r.StatusId = rs.StatusId
                 WHERE (
-                    (start_date <= @start_date AND end_date >= @start_date)
-                    OR (start_date <= @end_date AND end_date >= @end_date)
-                    OR (start_date >= @start_date AND end_date <= @end_date)
+                    (r.StartDate <= @StartDate AND r.EndDate >= @StartDate)
+                    OR (r.StartDate <= @EndDate AND r.EndDate >= @EndDate)
+                    OR (r.StartDate >= @StartDate AND r.EndDate <= @EndDate)
                 )
-                AND status IN ('Confirmada', 'Activa')
+                AND rs.StatusName IN ('Confirmada', 'Activa')
             `;
             
-            const params = { start_date: startDate, end_date: endDate };
+            const params = { StartDate: startDate, EndDate: endDate };
             
             if (excludeReservationId) {
-                query += ' AND id != @exclude_id';
-                params.exclude_id = excludeReservationId;
+                query += ' AND r.ReservationId != @ExcludeId';
+                params.ExcludeId = excludeReservationId;
             }
             
             const result = await executeQuery(query, params);
@@ -292,15 +499,17 @@ class Reservation {
             const query = `
                 SELECT 
                     COUNT(*) as total_reservations,
-                    COUNT(CASE WHEN status = 'Pendiente' THEN 1 END) as pending_reservations,
-                    COUNT(CASE WHEN status = 'Confirmada' THEN 1 END) as confirmed_reservations,
-                    COUNT(CASE WHEN status = 'Activa' THEN 1 END) as active_reservations,
-                    COUNT(CASE WHEN status = 'Completada' THEN 1 END) as completed_reservations,
-                    COUNT(CASE WHEN status = 'Cancelada' THEN 1 END) as cancelled_reservations,
-                    AVG(CAST(total_cost as FLOAT)) as average_cost,
-                    SUM(CASE WHEN payment_status = 'Pagado' THEN total_cost ELSE 0 END) as total_revenue
-                FROM Reservations
-                WHERE MONTH(created_at) = MONTH(GETDATE()) AND YEAR(created_at) = YEAR(GETDATE())
+                    COUNT(CASE WHEN rs.StatusName = 'Pendiente' THEN 1 END) as pending_reservations,
+                    COUNT(CASE WHEN rs.StatusName = 'Confirmada' THEN 1 END) as confirmed_reservations,
+                    COUNT(CASE WHEN rs.StatusName = 'Activa' THEN 1 END) as active_reservations,
+                    COUNT(CASE WHEN rs.StatusName = 'Completada' THEN 1 END) as completed_reservations,
+                    COUNT(CASE WHEN rs.StatusName = 'Cancelada' THEN 1 END) as cancelled_reservations,
+                    AVG(CAST(r.TotalCost as FLOAT)) as average_cost,
+                    SUM(CASE WHEN ps.StatusName = 'Pagado' THEN r.TotalCost ELSE 0 END) as total_revenue
+                FROM Reservations r
+                INNER JOIN Cat_ReservationStatuses rs ON r.StatusId = rs.StatusId
+                INNER JOIN Cat_PaymentStatuses ps ON r.PaymentStatusId = ps.PaymentStatusId
+                WHERE MONTH(r.CreatedAt) = MONTH(GETDATE()) AND YEAR(r.CreatedAt) = YEAR(GETDATE())
             `;
             
             const result = await executeQuery(query);
@@ -309,6 +518,54 @@ class Reservation {
             throw new Error(`Error obteniendo estadísticas: ${error.message}`);
         }
     }
+
+    // Obtener reservas por UserId (a través de Owners y Pets)
+    static async findByUserId(userId) {
+        try {
+            const query = `
+                SELECT 
+                    r.ReservationId,
+                    r.PetId,
+                    p.Name AS PetName,
+                    r.RoomId,
+                    rm.RoomNumber,
+                    rt.RoomTypeName,
+                    r.StartDate,
+                    r.EndDate,
+                    r.IsIndefinite,
+                    r.StatusId,
+                    s.StatusName,
+                    r.TotalCost,
+                    r.SpecialInstructions,
+                    r.CheckInDate,
+                    r.CheckOutDate,
+                    r.StayScheduleId,
+                    ss.ScheduleName AS StayScheduleName,
+                    r.AssistanceLevelId,
+                    al.LevelName AS AssistanceLevelName,
+                    o.Name AS OwnerName,
+                    o.Cedula AS OwnerCedula,
+                    r.CreatedAt,
+                    r.UpdatedAt
+                FROM Reservations r
+                INNER JOIN Pets p ON r.PetId = p.PetId
+                INNER JOIN Owners o ON p.OwnerId = o.OwnerId
+                LEFT JOIN Rooms rm ON r.RoomId = rm.RoomId
+                LEFT JOIN Cat_RoomTypes rt ON rm.RoomTypeId = rt.RoomTypeId
+                LEFT JOIN Cat_ReservationStatuses s ON r.StatusId = s.StatusId
+                LEFT JOIN Cat_StaySchedules ss ON r.StayScheduleId = ss.StayScheduleId
+                LEFT JOIN Cat_AssistanceLevels al ON r.AssistanceLevelId = al.AssistanceLevelId
+                WHERE o.UserId = @userId
+                ORDER BY r.CreatedAt DESC
+            `;
+            
+            const result = await executeQuery(query, { userId });
+            return result.recordset;
+        } catch (error) {
+            throw new Error(`Error obteniendo reservas del usuario: ${error.message}`);
+        }
+    }
 }
 
 module.exports = Reservation;
+

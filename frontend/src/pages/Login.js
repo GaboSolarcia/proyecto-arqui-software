@@ -15,32 +15,50 @@ function Login() {
     setError('');
     setLoading(true);
 
+    console.log('🔐 Intentando login con:', email);
+
     try {
       const res = await fetch('http://localhost:3001/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          email,
+          emailOrUsername: email,
           password: pass,
         }),
       });
 
+      console.log('📡 Respuesta recibida:', res.status);
+
       const data = await res.json();
+      console.log('📦 Datos:', data);
 
       if (!res.ok) {
+        console.log('❌ Login fallido:', data.message);
         setError(data.message || 'Credenciales incorrectas');
         setLoading(false);
         return;
       }
 
-      //  guardar token
-      localStorage.setItem('token', data.token);
-      localStorage.setItem('role', data.user.role);
+      console.log('✅ Login exitoso!');
+      
+      //  guardar token y datos del usuario
+      localStorage.setItem('authToken', data.token);
+      localStorage.setItem('user', JSON.stringify(data.user));
+      localStorage.setItem('role', data.user.roleName);
 
-      // redirección 
-      navigate('/');
+      console.log('🔄 Redirigiendo según rol:', data.user.roleName);
+      
+      // Redirección según el rol
+      if (data.user.roleName === 'Administrador' || 
+          data.user.roleName === 'Veterinario' || 
+          data.user.roleName === 'Recepcionista') {
+        navigate('/admin-dashboard');
+      } else {
+        navigate('/client-dashboard');
+      }
 
     } catch (err) {
+      console.error('💥 Error en catch:', err);
       setError('Error de conexión con el servidor');
     } finally {
       setLoading(false);
@@ -60,11 +78,12 @@ function Login() {
 
           <form className="space-y-7" onSubmit={handleLogin}>
             <div>
-              <label className="block text-base text-gray-700 mb-2">Email</label>
+              <label className="block text-base text-gray-700 mb-2">Email o Usuario</label>
               <input
-                type="email"
+                type="text"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
+                placeholder="admin o admin@lospatitos.com"
                 className="w-full rounded-full border border-gray-300 px-6 py-3 focus:ring-2 focus:ring-indigo-500 outline-none"
                 required
               />

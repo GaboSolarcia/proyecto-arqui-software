@@ -9,10 +9,10 @@ const path = require('path');
 const authRoutes = require('./routes/authRoutes');
 const petRoutes = require('./routes/petRoutes');
 const ownerRoutes = require('./routes/ownerRoutes');
-const veterinarianRoutes = require('./routes/veterinarianRoutes');
 const reservationRoutes = require('./routes/reservationRoutes');
 const specialistRoutes = require('./routes/specialistRoutes');
 const roomRoutes = require('./routes/roomRoutes');
+const cameraRoutes = require('./routes/cameraRoutes');
 
 // Configurar variables de entorno
 dotenv.config();
@@ -34,10 +34,10 @@ app.use(express.static(path.join(__dirname, 'public')));
 app.use('/api/auth', authRoutes);
 app.use('/api/pets', petRoutes);
 app.use('/api/owners', ownerRoutes);
-app.use('/api/veterinarians', veterinarianRoutes);
 app.use('/api/reservations', reservationRoutes);
 app.use('/api/specialists', specialistRoutes);
 app.use('/api/rooms', roomRoutes);
+app.use('/api/camera', cameraRoutes);
 
 // Ruta de prueba
 app.get('/api/health', (req, res) => {
@@ -57,7 +57,6 @@ app.get('/', (req, res) => {
             '/api/health',
             '/api/pets',
             '/api/owners',
-            '/api/veterinarians',
             '/api/reservations',
             '/api/specialists',
             '/api/rooms'

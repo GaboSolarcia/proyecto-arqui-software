@@ -1,46 +1,81 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Users, Plus, Clock, Search, Filter } from 'lucide-react';
+import { Users, Plus, Clock, Search, Filter, AlertCircle, Trash2 } from 'lucide-react';
 
 const SpecialistList = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterShift, setFilterShift] = useState('all');
+  const [specialists, setSpecialists] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
-  // Datos de ejemplo
-  const specialists = [
-    {
-      id: 1,
-      employee_name: 'Juan Carlos Pérez',
-      cedula: '1-1234-5678',
-      admission_date: '2024-01-15',
-      shift_schedule: 'Horario 1',
-      is_active: true
-    },
-    {
-      id: 2,
-      employee_name: 'María López Gómez',
-      cedula: '1-2345-6789',
-      admission_date: '2024-02-20',
-      shift_schedule: 'Horario 2',
-      is_active: true
-    },
-    {
-      id: 3,
-      employee_name: 'Carlos Rodríguez',
-      cedula: '1-3456-7890',
-      admission_date: '2024-03-10',
-      shift_schedule: 'Horario 3',
-      is_active: true
-    },
-    {
-      id: 4,
-      employee_name: 'Ana Martínez Silva',
-      cedula: '1-4567-8901',
-      admission_date: '2023-12-05',
-      shift_schedule: 'Horario 1',
-      is_active: false
+  useEffect(() => {
+    fetchSpecialists();
+  }, []);
+
+  const fetchSpecialists = async () => {
+    try {
+      setLoading(true);
+      const token = localStorage.getItem('authToken');
+      
+      if (!token) {
+        setError('No hay sesión activa');
+        setLoading(false);
+        return;
+      }
+
+      const response = await fetch('http://localhost:3001/api/specialists', {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        setSpecialists(data.data || []);
+      } else {
+        setError(data.message || 'Error al cargar especialistas');
+      }
+    } catch (err) {
+      console.error('Error fetching specialists:', err);
+      setError('Error de conexión con el servidor');
+    } finally {
+      setLoading(false);
     }
-  ];
+  };
+
+  const handleDeleteSpecialist = async (specialistId, specialistName) => {
+    if (!window.confirm(`¿Está seguro de eliminar al especialista ${specialistName}?`)) {
+      return;
+    }
+
+    try {
+      const token = localStorage.getItem('authToken');
+      
+      const response = await fetch(`http://localhost:3001/api/specialists/${specialistId}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        // Actualizar la lista de especialistas después de eliminar
+        setSpecialists(specialists.filter(s => (s.SpecialistId || s.id) !== specialistId));
+        alert('Especialista eliminado exitosamente');
+      } else {
+        alert(data.message || 'Error al eliminar especialista');
+      }
+    } catch (err) {
+      console.error('Error deleting specialist:', err);
+      alert('Error de conexión con el servidor');
+    }
+  };
 
   const getShiftColor = (shift) => {
     const colors = {
@@ -61,11 +96,41 @@ const SpecialistList = () => {
   };
 
   const filteredSpecialists = specialists.filter(specialist => {
-    const matchesSearch = specialist.employee_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         specialist.cedula.includes(searchTerm);
-    const matchesFilter = filterShift === 'all' || specialist.shift_schedule === filterShift;
+    const employeeName = specialist.EmployeeName || specialist.employee_name || '';
+    const cedula = specialist.Cedula || specialist.cedula || '';
+    const shiftSchedule = specialist.ShiftScheduleName || specialist.shift_schedule || '';
+    
+    const matchesSearch = employeeName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         cedula.includes(searchTerm);
+    const matchesFilter = filterShift === 'all' || shiftSchedule === filterShift;
     return matchesSearch && matchesFilter;
   });
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Cargando especialistas...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <AlertCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
+          <h3 className="text-lg font-medium text-gray-800 mb-2">Error al cargar especialistas</h3>
+          <p className="text-gray-600 mb-4">{error}</p>
+          <button onClick={fetchSpecialists} className="btn-primary">
+            Reintentar
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-7xl mx-auto">
@@ -102,7 +167,7 @@ const SpecialistList = () => {
             <div>
               <p className="text-sm text-gray-600">Activos</p>
               <p className="text-2xl font-bold text-green-600">
-                {specialists.filter(s => s.is_active).length}
+                {specialists.filter(s => s.IsActive || s.is_active).length}
               </p>
             </div>
             <div className="h-8 w-8 rounded-full bg-green-100 flex items-center justify-center">
@@ -115,7 +180,7 @@ const SpecialistList = () => {
             <div>
               <p className="text-sm text-gray-600">Turno Matutino</p>
               <p className="text-2xl font-bold text-yellow-600">
-                {specialists.filter(s => s.shift_schedule === 'Horario 1').length}
+                {specialists.filter(s => (s.ShiftScheduleName || s.shift_schedule) === 'Horario 1').length}
               </p>
             </div>
             <Clock className="h-8 w-8 text-yellow-600" />
@@ -126,7 +191,7 @@ const SpecialistList = () => {
             <div>
               <p className="text-sm text-gray-600">Turno Nocturno</p>
               <p className="text-2xl font-bold text-purple-600">
-                {specialists.filter(s => s.shift_schedule === 'Horario 3').length}
+                {specialists.filter(s => (s.ShiftScheduleName || s.shift_schedule) === 'Horario 3').length}
               </p>
             </div>
             <Clock className="h-8 w-8 text-purple-600" />
@@ -199,7 +264,7 @@ const SpecialistList = () => {
                 </tr>
               ) : (
                 filteredSpecialists.map((specialist) => (
-                  <tr key={specialist.id} className="hover:bg-gray-50">
+                  <tr key={specialist.SpecialistId || specialist.id} className="hover:bg-gray-50">
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center">
                         <div className="h-10 w-10 rounded-full bg-blue-100 flex items-center justify-center">
@@ -207,44 +272,48 @@ const SpecialistList = () => {
                         </div>
                         <div className="ml-4">
                           <div className="text-sm font-medium text-gray-900">
-                            {specialist.employee_name}
+                            {specialist.EmployeeName || specialist.employee_name}
                           </div>
                         </div>
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-gray-900">{specialist.cedula}</div>
+                      <div className="text-sm text-gray-900">{specialist.Cedula || specialist.cedula}</div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm text-gray-900">
-                        {new Date(specialist.admission_date).toLocaleDateString('es-ES')}
+                        {new Date(specialist.AdmissionDate || specialist.admission_date).toLocaleDateString('es-ES')}
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div>
-                        <span className={`px-3 py-1 rounded-full text-xs font-medium ${getShiftColor(specialist.shift_schedule)}`}>
-                          {specialist.shift_schedule}
+                        <span className={`px-3 py-1 rounded-full text-xs font-medium ${getShiftColor(specialist.ShiftScheduleName || specialist.shift_schedule)}`}>
+                          {specialist.ShiftScheduleName || specialist.shift_schedule}
                         </span>
                         <div className="text-xs text-gray-500 mt-1">
-                          {getShiftTime(specialist.shift_schedule)}
+                          {getShiftTime(specialist.ShiftScheduleName || specialist.shift_schedule)}
                         </div>
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span className={`px-3 py-1 rounded-full text-xs font-medium ${
-                        specialist.is_active 
+                        (specialist.IsActive || specialist.is_active)
                           ? 'bg-green-100 text-green-800' 
                           : 'bg-gray-100 text-gray-800'
                       }`}>
-                        {specialist.is_active ? 'Activo' : 'Inactivo'}
+                        {(specialist.IsActive || specialist.is_active) ? 'Activo' : 'Inactivo'}
                       </span>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm">
-                      <button className="text-blue-600 hover:text-blue-900 mr-4">
-                        Ver
-                      </button>
-                      <button className="text-green-600 hover:text-green-900 mr-4">
-                        Editar
+                    <td className="px-6 py-4 whitespace-nowrap text-center text-sm font-medium">
+                      <button
+                        onClick={() => handleDeleteSpecialist(
+                          specialist.SpecialistId || specialist.id,
+                          specialist.EmployeeName || specialist.employee_name
+                        )}
+                        className="text-red-600 hover:text-red-900 transition-colors duration-200 inline-flex items-center justify-center"
+                        title="Eliminar especialista"
+                      >
+                        <Trash2 className="h-5 w-5" />
                       </button>
                     </td>
                   </tr>

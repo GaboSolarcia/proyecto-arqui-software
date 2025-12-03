@@ -15,22 +15,36 @@ class Specialist {
     // Crear un nuevo especialista
     static async create(specialistData) {
         try {
+            // Mapear nombres de horario a IDs
+            const shiftMap = {
+                'Horario 1': 1, // Turno Matutino
+                'Horario 2': 2, // Turno Vespertino
+                'Horario 3': 3  // Turno Nocturno
+            };
+
+            const shiftId = shiftMap[specialistData.shift_schedule] || 1;
+
             const query = `
-                INSERT INTO Specialists (employee_name, cedula, admission_date, shift_schedule, is_active)
-                OUTPUT INSERTED.*
-                VALUES (@employee_name, @cedula, @admission_date, @shift_schedule, @is_active)
+                INSERT INTO Specialists (EmployeeName, Cedula, AdmissionDate, ShiftId, IsActive)
+                VALUES (@employeeName, @cedula, @admissionDate, @shiftId, @isActive);
+                
+                SELECT s.SpecialistId, s.EmployeeName, s.Cedula, s.AdmissionDate, s.ShiftId,
+                       ws.ShiftName AS ShiftScheduleName, s.IsActive
+                FROM Specialists s
+                LEFT JOIN Cat_WorkShifts ws ON s.ShiftId = ws.ShiftId
+                WHERE s.SpecialistId = SCOPE_IDENTITY();
             `;
             
             const params = {
-                employee_name: specialistData.employee_name,
+                employeeName: specialistData.employee_name,
                 cedula: specialistData.cedula,
-                admission_date: specialistData.admission_date || new Date(),
-                shift_schedule: specialistData.shift_schedule,
-                is_active: specialistData.is_active !== undefined ? specialistData.is_active : true
+                admissionDate: specialistData.admission_date || new Date(),
+                shiftId: shiftId,
+                isActive: specialistData.is_active !== undefined ? specialistData.is_active : true
             };
 
             const result = await executeQuery(query, params);
-            return new Specialist(result.recordset[0]);
+            return result.recordset[0];
         } catch (error) {
             throw new Error(`Error creando especialista: ${error.message}`);
         }
@@ -40,12 +54,27 @@ class Specialist {
     static async findAll() {
         try {
             const query = `
-                SELECT * FROM Specialists
-                ORDER BY employee_name ASC
+                SELECT 
+                    s.SpecialistId,
+                    s.EmployeeName,
+                    s.Cedula,
+                    s.Phone,
+                    s.Email,
+                    s.AdmissionDate,
+                    s.ShiftId,
+                    ws.ShiftName AS ShiftScheduleName,
+                    s.Position,
+                    s.UserId,
+                    s.IsActive,
+                    s.CreatedAt,
+                    s.UpdatedAt
+                FROM Specialists s
+                LEFT JOIN Cat_WorkShifts ws ON s.ShiftId = ws.ShiftId
+                ORDER BY s.EmployeeName ASC
             `;
             
             const result = await executeQuery(query);
-            return result.recordset.map(specialist => new Specialist(specialist));
+            return result.recordset;
         } catch (error) {
             throw new Error(`Error obteniendo especialistas: ${error.message}`);
         }
@@ -55,8 +84,23 @@ class Specialist {
     static async findById(id) {
         try {
             const query = `
-                SELECT * FROM Specialists
-                WHERE id = @id
+                SELECT 
+                    s.SpecialistId,
+                    s.EmployeeName,
+                    s.Cedula,
+                    s.Phone,
+                    s.Email,
+                    s.AdmissionDate,
+                    s.ShiftId,
+                    ws.ShiftName AS ShiftScheduleName,
+                    s.Position,
+                    s.UserId,
+                    s.IsActive,
+                    s.CreatedAt,
+                    s.UpdatedAt
+                FROM Specialists s
+                LEFT JOIN Cat_WorkShifts ws ON s.ShiftId = ws.ShiftId
+                WHERE s.SpecialistId = @id
             `;
             
             const result = await executeQuery(query, { id });
@@ -65,7 +109,7 @@ class Specialist {
                 return null;
             }
             
-            return new Specialist(result.recordset[0]);
+            return result.recordset[0];
         } catch (error) {
             throw new Error(`Error obteniendo especialista: ${error.message}`);
         }
@@ -75,8 +119,20 @@ class Specialist {
     static async findByCedula(cedula) {
         try {
             const query = `
-                SELECT * FROM Specialists
-                WHERE cedula = @cedula
+                SELECT 
+                    s.SpecialistId,
+                    s.EmployeeName,
+                    s.Cedula,
+                    s.Phone,
+                    s.Email,
+                    s.AdmissionDate,
+                    s.ShiftId,
+                    ws.ShiftName AS ShiftScheduleName,
+                    s.Position,
+                    s.IsActive
+                FROM Specialists s
+                LEFT JOIN Cat_WorkShifts ws ON s.ShiftId = ws.ShiftId
+                WHERE s.Cedula = @cedula
             `;
             
             const result = await executeQuery(query, { cedula });
@@ -85,7 +141,7 @@ class Specialist {
                 return null;
             }
             
-            return new Specialist(result.recordset[0]);
+            return result.recordset[0];
         } catch (error) {
             throw new Error(`Error buscando especialista por cédula: ${error.message}`);
         }
@@ -95,9 +151,19 @@ class Specialist {
     static async findByShift(shift_schedule) {
         try {
             const query = `
-                SELECT * FROM Specialists
-                WHERE shift_schedule = @shift_schedule AND is_active = 1
-                ORDER BY employee_name ASC
+                SELECT 
+                    s.SpecialistId,
+                    s.EmployeeName,
+                    s.Cedula,
+                    s.AdmissionDate,
+                    s.ShiftId,
+                    ws.ShiftName AS ShiftScheduleName,
+                    s.Position,
+                    s.IsActive
+                FROM Specialists s
+                INNER JOIN Cat_WorkShifts ws ON s.ShiftId = ws.ShiftId
+                WHERE ws.ShiftName = @shift_schedule AND s.IsActive = 1
+                ORDER BY s.EmployeeName ASC
             `;
             
             const result = await executeQuery(query, { shift_schedule });
@@ -143,16 +209,24 @@ class Specialist {
         }
     }
 
-    // Eliminar (desactivar) especialista
+    // Eliminar especialista
     static async delete(id) {
         try {
-            const query = `
-                UPDATE Specialists
-                SET is_active = 0, updated_at = GETDATE()
-                WHERE id = @id
+            // Primero, establecer en NULL las referencias en otras tablas
+            const updateReferencesQuery = `
+                UPDATE Rooms SET CleanedBy = NULL WHERE CleanedBy = @id;
+                UPDATE RoomMaintenanceHistory SET PerformedBy = NULL WHERE PerformedBy = @id;
             `;
             
-            await executeQuery(query, { id });
+            await executeQuery(updateReferencesQuery, { id });
+            
+            // Luego, eliminar el especialista
+            const deleteQuery = `
+                DELETE FROM Specialists
+                WHERE SpecialistId = @id
+            `;
+            
+            await executeQuery(deleteQuery, { id });
             return true;
         } catch (error) {
             throw new Error(`Error eliminando especialista: ${error.message}`);

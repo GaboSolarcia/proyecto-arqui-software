@@ -7,17 +7,25 @@ class Owner {
     static async findAll() {
         const result = await executeQuery(`
             SELECT 
-                Id                      AS id,
-                Name                    AS name,
-                Phone                   AS phone,
-                Email                   AS email,
-                Address                 AS address,
-                Emergency_Contact       AS emergency_contact,
-                Emergency_Phone         AS emergency_phone,
-                Created_at              AS created_at,
-                updated_at              AS updated_at,
-                cedula
-            FROM Owners;
+                o.OwnerId,
+                o.Cedula,
+                o.Name,
+                o.Phone,
+                o.Email,
+                o.Address,
+                o.EmergencyContact,
+                o.EmergencyPhone,
+                o.UserId,
+                o.IsActive,
+                o.CreatedAt,
+                o.UpdatedAt,
+                COUNT(p.PetId) AS PetCount
+            FROM Owners o
+            LEFT JOIN Pets p ON o.OwnerId = p.OwnerId
+            GROUP BY o.OwnerId, o.Cedula, o.Name, o.Phone, o.Email, o.Address, 
+                     o.EmergencyContact, o.EmergencyPhone, o.UserId, o.IsActive, 
+                     o.CreatedAt, o.UpdatedAt
+            ORDER BY o.Name;
         `);
 
         return result.recordset;
@@ -46,18 +54,20 @@ class Owner {
     static async findByCedula(cedula) {
         const result = await executeQuery(`
             SELECT 
-                Id                      AS id,
-                Name                    AS name,
-                Phone                   AS phone,
-                Email                   AS email,
-                Address                 AS address,
-                Emergency_Contact       AS emergency_contact,
-                Emergency_Phone         AS emergency_phone,
-                Created_at              AS created_at,
-                updated_at              AS updated_at,
-                cedula
+                OwnerId,
+                Cedula,
+                Name,
+                Phone,
+                Email,
+                Address,
+                EmergencyContact,
+                EmergencyPhone,
+                UserId,
+                IsActive,
+                CreatedAt,
+                UpdatedAt
             FROM Owners
-            WHERE cedula = @cedula;
+            WHERE Cedula = @cedula;
         `, { cedula });
 
         return result.recordset[0];
@@ -66,34 +76,39 @@ class Owner {
     static async create(data) {
         const result = await executeQuery(`
             INSERT INTO Owners (
+                Cedula,
                 Name,
                 Phone,
                 Email,
                 Address,
-                Emergency_Contact,
-                Emergency_Phone,
-                cedula,
-                Created_at
+                EmergencyContact,
+                EmergencyPhone,
+                UserId,
+                IsActive,
+                CreatedAt
             )
             OUTPUT INSERTED.*
             VALUES (
+                @cedula,
                 @name,
                 @phone,
                 @email,
                 @address,
-                @emergency_contact,
-                @emergency_phone,
-                @cedula,
+                @emergencyContact,
+                @emergencyPhone,
+                @userId,
+                1,
                 SYSDATETIME()
             );
         `, {
+            cedula: data.cedula,
             name: data.name,
             phone: data.phone || null,
             email: data.email || null,
             address: data.address || null,
-            emergency_contact: data.emergency_contact || null,
-            emergency_phone: data.emergency_phone || null,
-            cedula: data.cedula
+            emergencyContact: data.emergencyContact || data.emergency_contact || null,
+            emergencyPhone: data.emergencyPhone || data.emergency_phone || null,
+            userId: data.userId || data.UserId || null
         });
 
         return result.recordset[0];

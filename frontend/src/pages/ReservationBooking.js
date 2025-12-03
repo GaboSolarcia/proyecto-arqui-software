@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { toast } from 'react-toastify';
 import { Calendar, Save, ArrowLeft } from 'lucide-react';
@@ -6,13 +6,57 @@ import { Link } from 'react-router-dom';
 
 const ReservationBooking = () => {
   const [isLoading, setIsLoading] = useState(false);
+  const [pets, setPets] = useState([]);
+  const [loadingPets, setLoadingPets] = useState(true);
   const { register, handleSubmit, formState: { errors }, watch, reset } = useForm();
 
   const startDate = watch('start_date');
 
+  // Cargar mascotas del usuario al montar el componente
+  useEffect(() => {
+    fetchUserPets();
+  }, []);
+
+  const fetchUserPets = async () => {
+    try {
+      setLoadingPets(true);
+      const token = localStorage.getItem('authToken');
+
+      // No necesitamos pasar ownerId, el backend ya filtra por el usuario logueado
+      const response = await fetch('http://localhost:3001/api/pets', {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        // Filtrar solo mascotas aprobadas
+        const approvedPets = data.data.filter(pet => pet.IsApproved);
+        setPets(approvedPets);
+      } else {
+        toast.error('Error al cargar sus mascotas');
+      }
+    } catch (error) {
+      console.error('Error:', error);
+      toast.error('Error conectando con el servidor');
+    } finally {
+      setLoadingPets(false);
+    }
+  };
+
   const onSubmit = async (data) => {
     setIsLoading(true);
     try {
+      const token = localStorage.getItem('authToken');
+      
+      if (!token) {
+        toast.error('No hay sesión activa. Por favor inicie sesión.');
+        return;
+      }
+
       // Construir objeto de paquetes adicionales
       const additionalPackages = {
         juegos: data.package_juegos || false,
@@ -23,24 +67,45 @@ const ReservationBooking = () => {
 
       // Preparar datos de la reserva
       const reservationData = {
-        pet_id: data.pet_id,
+        pet_id: parseInt(data.pet_id),
         start_date: data.start_date,
-        end_date: data.end_date,
-        service_type: 'Guardería',
-        special_instructions: data.special_instructions,
-        assistance_level: data.assistance_level,
-        additional_packages: additionalPackages,
-        status: 'Pendiente'
+        end_date: data.is_indefinite ? null : (data.end_date || null),
+        is_indefinite: data.is_indefinite || false,
+        service_type: 'Hospedaje Completo',
+        special_instructions: data.special_instructions || null,
+        assistance_level: data.assistance_level || 'Asistencia básica',
+        additional_packages: JSON.stringify(additionalPackages),
+        stay_schedule: data.stay_schedule || 'Full estancia',
+        room_type: data.room_type || 'Habitación Individual',
+        status: 'Pendiente',
+        total_cost: 0 // El backend calculará el costo
       };
 
-      // Simular llamada a la API
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      console.log('Datos de la reserva:', reservationData);
-      toast.success('Reserva creada exitosamente');
-      reset();
+      console.log('Enviando reserva:', reservationData);
+
+      // Llamada real a la API
+      const response = await fetch('http://localhost:3001/api/reservations', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(reservationData)
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        toast.success('¡Reserva creada exitosamente!');
+        reset();
+        // Opcional: redirigir a la lista de reservaciones
+        // navigate('/reservations');
+      } else {
+        toast.error(result.message || 'Error al crear la reserva');
+      }
     } catch (error) {
-      toast.error('Error al crear la reserva');
+      console.error('Error:', error);
+      toast.error('Error al conectar con el servidor');
     } finally {
       setIsLoading(false);
     }
@@ -73,16 +138,29 @@ const ReservationBooking = () => {
               <select
                 className="form-input"
                 {...register('pet_id', { required: 'Debe seleccionar una mascota' })}
+                disabled={loadingPets}
               >
-                <option value="">Seleccionar mascota...</option>
-                <option value="1">Max - Golden Retriever (Dueño: Juan Pérez)</option>
-                <option value="2">Luna - Gato Siamés (Dueño: María López)</option>
-                <option value="3">Rocky - Bulldog Francés (Dueño: Carlos Gómez)</option>
-                <option value="4">Bella - Poodle (Dueño: Ana Martínez)</option>
+                <option value="">
+                  {loadingPets ? 'Cargando mascotas...' : 'Seleccionar mascota...'}
+                </option>
+                {pets.length > 0 ? (
+                  pets.map(pet => (
+                    <option key={pet.PetId} value={pet.PetId}>
+                      {pet.Name} - {pet.Species} {pet.Breed ? `(${pet.Breed})` : ''}
+                    </option>
+                  ))
+                ) : (
+                  !loadingPets && <option value="" disabled>No tiene mascotas registradas y aprobadas</option>
+                )}
               </select>
               {errors.pet_id && <p className="form-error">{errors.pet_id.message}</p>}
               <p className="text-sm text-gray-500 mt-1">
                 ¿No encuentra su mascota? <Link to="/pets/register" className="text-blue-600 hover:underline">Regístrela aquí</Link>
+                {pets.length === 0 && !loadingPets && (
+                  <span className="block text-yellow-600 mt-1">
+                    ⚠️ Sus mascotas deben ser aprobadas antes de crear una reservación
+                  </span>
+                )}
               </p>
             </div>
 
@@ -95,10 +173,14 @@ const ReservationBooking = () => {
                   {...register('start_date', { 
                     required: 'La fecha de ingreso es requerida',
                     validate: value => {
+                      if (!value) return 'La fecha de ingreso es requerida';
+                      
+                      // Crear fechas en formato local (YYYY-MM-DD)
                       const today = new Date();
-                      today.setHours(0, 0, 0, 0);
-                      const selected = new Date(value);
-                      return selected >= today || 'La fecha debe ser hoy o posterior';
+                      const todayStr = today.toISOString().split('T')[0];
+                      
+                      // Comparar strings directamente para evitar problemas de zona horaria
+                      return value >= todayStr || 'La fecha debe ser hoy o posterior';
                     }
                   })}
                   min={new Date().toISOString().split('T')[0]}
@@ -114,9 +196,9 @@ const ReservationBooking = () => {
                   {...register('end_date', { 
                     validate: value => {
                       if (!startDate || !value) return true;
-                      const start = new Date(startDate);
-                      const end = new Date(value);
-                      return end > start || 'La fecha de salida debe ser posterior al ingreso';
+                      
+                      // Comparar strings directamente
+                      return value > startDate || 'La fecha de salida debe ser posterior al ingreso';
                     }
                   })}
                   min={startDate || new Date().toISOString().split('T')[0]}
@@ -180,12 +262,12 @@ const ReservationBooking = () => {
               <select
                 className="form-input"
                 {...register('room_type', { required: 'El tipo de habitación es requerido' })}
-                defaultValue="Habitación individual"
+                defaultValue="Habitación Individual"
               >
                 <option value="">Seleccionar habitación...</option>
-                <option value="Habitación individual">Habitación individual - Cuidado estándar</option>
-                <option value="Habitación individual con cámara">Habitación individual con cámara - Monitoreo 24/7</option>
-                <option value="Habitación de cuidados especiales">Habitación de cuidados especiales - Atención intensiva</option>
+                <option value="Habitación Individual">Habitación Individual - Cuidado estándar</option>
+                <option value="Habitación Individual con Cámara">Habitación Individual con Cámara - Monitoreo 24/7</option>
+                <option value="Sala de Cuidados Especiales">Sala de Cuidados Especiales - Atención intensiva</option>
               </select>
               {errors.room_type && <p className="form-error">{errors.room_type.message}</p>}
             </div>

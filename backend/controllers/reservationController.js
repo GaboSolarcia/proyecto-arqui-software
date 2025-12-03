@@ -5,7 +5,19 @@ class ReservationController {
     // Obtener todas las reservas
     static async getAllReservations(req, res) {
         try {
-            const reservations = await Reservation.findAll();
+            const userRole = req.user.roleName;
+            const userId = req.user.userId;
+            
+            let reservations;
+            
+            // Si es Usuario Normal, solo ver sus propias reservas
+            if (userRole === 'Usuario Normal') {
+                reservations = await Reservation.findByUserId(userId);
+            } else {
+                // Si es Admin, Veterinario o Recepcionista, ver todas
+                reservations = await Reservation.findAll();
+            }
+            
             res.status(200).json({
                 success: true,
                 data: reservations,
@@ -24,6 +36,9 @@ class ReservationController {
     static async getReservationById(req, res) {
         try {
             const { id } = req.params;
+            const userRole = req.user.roleName;
+            const userId = req.user.userId;
+            
             const reservation = await Reservation.findById(id);
             
             if (!reservation) {
@@ -31,6 +46,18 @@ class ReservationController {
                     success: false,
                     message: 'Reserva no encontrada'
                 });
+            }
+
+            // Si es Usuario Normal, verificar que sea su reserva
+            if (userRole === 'Usuario Normal') {
+                const Pet = require('../models/Pet');
+                const petOwner = await Pet.getOwnerByPetId(reservation.PetId);
+                if (!petOwner || petOwner.UserId !== userId) {
+                    return res.status(403).json({
+                        success: false,
+                        message: 'No tienes permiso para ver esta reserva'
+                    });
+                }
             }
 
             res.status(200).json({
@@ -60,20 +87,19 @@ class ReservationController {
 
             const reservationData = req.body;
             
-            // Verificar disponibilidad antes de crear la reserva
-            const isAvailable = await Reservation.checkAvailability(
-                reservationData.start_date,
-                reservationData.end_date
-            );
+            // El modelo Reservation.create() ya busca y asigna automáticamente
+            // una habitación disponible, por lo que no necesitamos verificar
+            // disponibilidad general aquí
+            
+            const newReservation = await Reservation.create(reservationData);
 
-            if (!isAvailable) {
+            // Si no se pudo asignar habitación, el newReservation tendrá RoomId null
+            if (!newReservation.room_id) {
                 return res.status(409).json({
                     success: false,
-                    message: 'No hay disponibilidad para las fechas seleccionadas'
+                    message: 'No hay habitaciones disponibles del tipo solicitado para las fechas seleccionadas'
                 });
             }
-
-            const newReservation = await Reservation.create(reservationData);
 
             res.status(201).json({
                 success: true,

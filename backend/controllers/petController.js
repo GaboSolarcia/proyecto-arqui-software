@@ -5,7 +5,19 @@ class PetController {
     // Obtener todas las mascotas
     static async getAllPets(req, res) {
         try {
-            const pets = await Pet.findAll();
+            const userRole = req.user.roleName; // Viene del middleware de autenticación
+            const userId = req.user.userId;
+            
+            let pets;
+            
+            // Si es Usuario Normal (cliente), solo ver sus propias mascotas
+            if (userRole === 'Usuario Normal') {
+                pets = await Pet.findByUserId(userId);
+            } else {
+                // Si es Admin, Veterinario o Recepcionista, ver todas
+                pets = await Pet.findAll();
+            }
+            
             res.status(200).json({
                 success: true,
                 data: pets,
@@ -24,6 +36,9 @@ class PetController {
     static async getPetById(req, res) {
         try {
             const { id } = req.params;
+            const userRole = req.user.roleName;
+            const userId = req.user.userId;
+            
             const pet = await Pet.findById(id);
             
             if (!pet) {
@@ -31,6 +46,17 @@ class PetController {
                     success: false,
                     message: 'Mascota no encontrada'
                 });
+            }
+
+            // Si es Usuario Normal, verificar que sea su mascota
+            if (userRole === 'Usuario Normal') {
+                const ownerInfo = await Pet.getOwnerByPetId(id);
+                if (!ownerInfo || ownerInfo.UserId !== userId) {
+                    return res.status(403).json({
+                        success: false,
+                        message: 'No tienes permiso para ver esta mascota'
+                    });
+                }
             }
 
             res.status(200).json({
@@ -60,17 +86,69 @@ class PetController {
             }
 
             const petData = req.body;
+            const userId = req.user.userId;
+            const userRole = req.user.roleName;
+
+            // Si es Usuario Normal, obtener su OwnerId automáticamente
+            if (userRole === 'Usuario Normal') {
+                const ownerInfo = await Pet.getOwnerByUserId(userId);
+                if (!ownerInfo) {
+                    return res.status(404).json({
+                        success: false,
+                        message: 'No se encontró registro de dueño asociado a este usuario. Contacte al administrador.'
+                    });
+                }
+                petData.ownerId = ownerInfo.OwnerId;
+            }
+
             const newPet = await Pet.create(petData);
 
             res.status(201).json({
                 success: true,
-                message: 'Mascota registrada exitosamente',
+                message: 'Mascota registrada exitosamente. Pendiente de aprobación.',
                 data: newPet
             });
         } catch (error) {
             res.status(500).json({
                 success: false,
                 message: 'Error creando mascota',
+                error: error.message
+            });
+        }
+    }
+
+    // Aprobar mascota
+    static async approvePet(req, res) {
+        try {
+            const { id } = req.params;
+            const userRole = req.user.roleName;
+
+            // Solo Admin y Recepcionista pueden aprobar
+            if (userRole !== 'Administrador' && userRole !== 'Recepcionista') {
+                return res.status(403).json({
+                    success: false,
+                    message: 'No tienes permisos para aprobar mascotas'
+                });
+            }
+
+            const approved = await Pet.approve(id);
+            
+            if (!approved) {
+                return res.status(404).json({
+                    success: false,
+                    message: 'Mascota no encontrada'
+                });
+            }
+
+            res.status(200).json({
+                success: true,
+                message: 'Mascota aprobada exitosamente',
+                data: approved
+            });
+        } catch (error) {
+            res.status(500).json({
+                success: false,
+                message: 'Error aprobando mascota',
                 error: error.message
             });
         }

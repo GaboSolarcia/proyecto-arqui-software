@@ -2,6 +2,10 @@ const express = require('express');
 const router = express.Router();
 const { body } = require('express-validator');
 const PetController = require('../controllers/petController');
+const { authMiddleware } = require('../middleware/auth');
+
+// Aplicar middleware de autenticación a todas las rutas
+router.use(authMiddleware);
 
 // Validaciones para mascotas
 const petValidationRules = () => {
@@ -24,10 +28,10 @@ const petValidationRules = () => {
             .matches(/^\d{1}-\d{4}-\d{4}$/)
             .withMessage('Formato de cédula inválido. Use formato: 1-1234-5678'),
         
-        body('veterinarian_id')
+        body('specialist_id')
             .optional()
             .isInt({ min: 1 })
-            .withMessage('ID de veterinario debe ser un número entero positivo'),
+            .withMessage('ID de especialista debe ser un número entero positivo'),
         
         body('allergies')
             .optional()
@@ -70,6 +74,9 @@ router.get('/:id', PetController.getPetById);
 
 // POST /api/pets - Crear nueva mascota
 router.post('/', petValidationRules(), PetController.createPet);
+
+// PATCH /api/pets/:id/approve - Aprobar mascota
+router.patch('/:id/approve', PetController.approvePet);
 
 // PUT /api/pets/:id - Actualizar mascota
 router.put('/:id', petValidationRules(), PetController.updatePet);

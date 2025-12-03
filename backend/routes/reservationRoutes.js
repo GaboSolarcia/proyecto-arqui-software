@@ -2,6 +2,10 @@ const express = require('express');
 const router = express.Router();
 const { body } = require('express-validator');
 const ReservationController = require('../controllers/reservationController');
+const { authMiddleware } = require('../middleware/auth');
+
+// Aplicar middleware de autenticación a todas las rutas
+router.use(authMiddleware);
 
 // Validaciones para reservas
 const reservationValidationRules = () => {
@@ -32,8 +36,9 @@ const reservationValidationRules = () => {
         
         body('service_type')
             .optional()
-            .isIn(['Guardería', 'Hospedaje', 'Cuidado Médico', 'Guardería Premium', 'Hospedaje Nocturno', 'Cuidado Médico Especial'])
-            .withMessage('Tipo de servicio inválido'),
+            .isString()
+            .isLength({ min: 1, max: 100 })
+            .withMessage('El tipo de servicio debe ser una cadena válida'),
         
         body('special_instructions')
             .optional()

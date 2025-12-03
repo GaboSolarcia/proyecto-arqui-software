@@ -174,15 +174,6 @@ DELETE /api/owners/:id               # Eliminar dueño
 GET    /api/owners/cedula/:cedula    # Buscar por cédula
 ```
 
-### 🏥 Veterinarios (`/api/veterinarians`)
-```
-GET    /api/veterinarians        # Listar veterinarios
-GET    /api/veterinarians/:id    # Obtener veterinario por ID
-POST   /api/veterinarians        # Crear veterinario
-PUT    /api/veterinarians/:id    # Actualizar veterinario
-DELETE /api/veterinarians/:id    # Desactivar veterinario
-```
-
 ### 📅 Reservas (`/api/reservations`)
 ```
 GET    /api/reservations             # Listar reservas
@@ -201,13 +192,9 @@ GET    /api/reservations/active      # Reservas activas
 - `id`, `name`, `cedula`, `phone`, `email`, `address`
 - `emergency_contact`, `emergency_phone`
 
-**Veterinarians (Veterinarios)**
-- `id`, `name`, `license_number`, `phone`, `email`
-- `specialty`, `is_active`
-
 **Pets (Mascotas)**
 - `id`, `name`, `owner_name`, `owner_cedula`
-- `admission_date`, `veterinarian_id`
+- `admission_date`, `specialist_id`
 - `allergies`, `bandage_changes`, `special_diet`
 
 **Reservations (Reservas)**

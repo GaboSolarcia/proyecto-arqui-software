@@ -1,16 +1,33 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { toast } from 'react-toastify';
-import { Save, ArrowLeft, Heart } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Save, ArrowLeft, Heart, AlertCircle } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
 
 const PetRegistration = () => {
   const [isLoading, setIsLoading] = useState(false);
   const { register, handleSubmit, formState: { errors }, reset } = useForm();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    // Verificar que el usuario no sea administrador
+    const role = localStorage.getItem('role');
+    if (role === 'Administrador') {
+      toast.error('Los administradores no pueden registrar mascotas');
+      navigate('/pets');
+    }
+  }, [navigate]);
 
   const onSubmit = async (data) => {
     setIsLoading(true);
     try {
+      const token = localStorage.getItem('authToken');
+      if (!token) {
+        toast.error('Debes iniciar sesión');
+        navigate('/login');
+        return;
+      }
+
       // Construir objeto de paquetes adicionales
       const additionalPackages = {
         juegos: data.package_juegos || false,
@@ -21,24 +38,51 @@ const PetRegistration = () => {
 
       // Preparar datos para enviar
       const petData = {
-        ...data,
+        name: data.name,
+        owner_name: data.owner_name,
+        owner_cedula: data.owner_cedula,
+        species: data.species,
+        breed: data.breed,
+        age: parseInt(data.age),
+        weight: parseFloat(data.weight),
+        admission_date: data.admission_date,
+        special_needs: data.special_needs || null,
+        allergies: data.allergies || null,
+        bandage_changes: data.bandage_changes || null,
+        special_diet: data.special_diet || null,
         additional_packages: additionalPackages
       };
 
-      // Eliminar campos de checkbox individuales
-      delete petData.package_juegos;
-      delete petData.package_paseos_acompanamiento;
-      delete petData.package_piscina;
-      delete petData.package_terapias;
+      console.log('Enviando datos de mascota:', petData);
 
-      // Simular llamada a la API
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      console.log('Datos de la mascota:', petData);
+      // Llamada real a la API
+      const response = await fetch('http://localhost:3001/api/pets', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(petData)
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.message || 'Error al registrar la mascota');
+      }
+
+      console.log('Mascota registrada:', result);
       toast.success('Mascota registrada exitosamente');
       reset();
+      
+      // Redirigir a la lista de mascotas después de 1 segundo
+      setTimeout(() => {
+        navigate('/pets');
+      }, 1000);
+      
     } catch (error) {
-      toast.error('Error al registrar la mascota');
+      console.error('Error al registrar mascota:', error);
+      toast.error(error.message || 'Error al registrar la mascota');
     } finally {
       setIsLoading(false);
     }
@@ -165,16 +209,16 @@ const PetRegistration = () => {
             </div>
           </div>
 
-          {/* Veterinario */}
+          {/* Especialista */}
           <div>
-            <h3 className="text-lg font-semibold text-gray-800 mb-4">Asignación de Veterinario</h3>
+            <h3 className="text-lg font-semibold text-gray-800 mb-4">Asignación de Especialista</h3>
             <div className="form-group">
-              <label className="form-label">Veterinario Asignado</label>
+              <label className="form-label">Especialista Asignado</label>
               <select
                 className="form-input"
-                {...register('veterinarian_id')}
+                {...register('specialist_id')}
               >
-                <option value="">Seleccionar veterinario...</option>
+                <option value="">Seleccionar especialista...</option>
                 <option value="1">Dr. María González - Medicina General</option>
                 <option value="2">Dr. Carlos Ramírez - Cirugía</option>
                 <option value="3">Dra. Ana Morales - Dermatología</option>

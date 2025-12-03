@@ -1,5 +1,5 @@
 import React from 'react';
-import { BrowserRouter as Router, Routes, Route, useLocation } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, useLocation, Navigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from 'react-query';
 import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
@@ -13,16 +13,20 @@ import PetRegistration from './pages/PetRegistration';
 import ReservationBooking from './pages/ReservationBooking';
 import PetList from './pages/PetList';
 import ReservationList from './pages/ReservationList';
-import VeterinarianList from './pages/VeterinarianList';
 import OwnerList from './pages/OwnerList';
 import SpecialistList from './pages/SpecialistList';
 import SpecialististRegistration from './pages/SpecialistRegistration';
 import RoomList from './pages/RoomList';
 import RoomDetail from './pages/RoomDetail';
+import ClientDashboard from './pages/ClientDashboard';
+import AdminDashboard from './pages/AdminDashboard';
+import Unauthorized from './pages/Unauthorized';
+import PetMonitoring from './pages/PetMonitoring';
 
 // Importar componentes
 import Navbar from './components/Navbar';
 import Footer from './components/Footer';
+import ProtectedRoute from './components/ProtectedRoute';
 
 // Configurar React Query
 const queryClient = new QueryClient({
@@ -33,6 +37,17 @@ const queryClient = new QueryClient({
     },
   },
 });
+
+// Componente para redirigir al dashboard según el rol
+const DashboardRedirect = () => {
+  const role = localStorage.getItem('role');
+  
+  if (role === 'Administrador' || role === 'Veterinario' || role === 'Recepcionista') {
+    return <AdminDashboard />;
+  } else {
+    return <ClientDashboard />;
+  }
+};
 
 // Layout solo para Login y register
 function AppLayout() {
@@ -54,30 +69,128 @@ function AppLayout() {
         <main className="container mx-auto px-4 py-8">
           <Routes>
 
-            {/* Página principal */}
-            <Route path="/" element={<Home />} />
+            {/* Página principal - Redirige según el rol */}
+            <Route 
+              path="/" 
+              element={
+                <ProtectedRoute>
+                  <DashboardRedirect />
+                </ProtectedRoute>
+              } 
+            />
 
-            {/* Gestión de mascotas */}
-            <Route path="/pets" element={<PetList />} />
-            <Route path="/pets/register" element={<PetRegistration />} />
+            {/* Dashboards */}
+            <Route 
+              path="/client-dashboard" 
+              element={
+                <ProtectedRoute allowedRoles={['Usuario Normal']}>
+                  <ClientDashboard />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="/admin-dashboard" 
+              element={
+                <ProtectedRoute allowedRoles={['Administrador', 'Veterinario', 'Recepcionista']}>
+                  <AdminDashboard />
+                </ProtectedRoute>
+              } 
+            />
 
-            {/* Gestión de reservas */}
-            <Route path="/reservations" element={<ReservationList />} />
-            <Route path="/reservations/book" element={<ReservationBooking />} />
+            {/* Gestión de mascotas - Acceso para todos los autenticados */}
+            <Route 
+              path="/pets" 
+              element={
+                <ProtectedRoute>
+                  <PetList />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="/pets/register" 
+              element={
+                <ProtectedRoute>
+                  <PetRegistration />
+                </ProtectedRoute>
+              } 
+            />
 
-            {/* Gestión de veterinarios */}
-            <Route path="/veterinarians" element={<VeterinarianList />} />
+            {/* Gestión de reservas - Acceso para todos los autenticados */}
+            <Route 
+              path="/reservations" 
+              element={
+                <ProtectedRoute>
+                  <ReservationList />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="/reservations/book" 
+              element={
+                <ProtectedRoute>
+                  <ReservationBooking />
+                </ProtectedRoute>
+              } 
+            />
 
-            {/* Gestión de dueños */}
-            <Route path="/owners" element={<OwnerList />} />
+            {/* Monitoreo de mascotas - Acceso para usuarios normales con mascotas en habitaciones con cámara */}
+            <Route 
+              path="/pet-monitoring" 
+              element={
+                <ProtectedRoute>
+                  <PetMonitoring />
+                </ProtectedRoute>
+              } 
+            />
 
-            {/* Gestión de especialistas */}
-            <Route path="/specialists" element={<SpecialistList />} />
-            <Route path="/specialists/register" element={<SpecialististRegistration />} />
+            {/* Gestión de dueños - Solo Admin */}
+            <Route 
+              path="/owners" 
+              element={
+                <ProtectedRoute allowedRoles={['Administrador', 'Recepcionista']}>
+                  <OwnerList />
+                </ProtectedRoute>
+              } 
+            />
 
-            {/* Gestión de habitaciones */}
-            <Route path="/rooms" element={<RoomList />} />
-            <Route path="/rooms/:id" element={<RoomDetail />} />
+            {/* Gestión de especialistas - Solo Admin */}
+            <Route 
+              path="/specialists" 
+              element={
+                <ProtectedRoute allowedRoles={['Administrador']}>
+                  <SpecialistList />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="/specialists/register" 
+              element={
+                <ProtectedRoute allowedRoles={['Administrador']}>
+                  <SpecialististRegistration />
+                </ProtectedRoute>
+              } 
+            />
+
+            {/* Gestión de habitaciones - Solo Admin y Recepcionista */}
+            <Route 
+              path="/rooms" 
+              element={
+                <ProtectedRoute allowedRoles={['Administrador', 'Recepcionista']}>
+                  <RoomList />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="/rooms/:id" 
+              element={
+                <ProtectedRoute allowedRoles={['Administrador', 'Recepcionista']}>
+                  <RoomDetail />
+                </ProtectedRoute>
+              } 
+            />
+
+            {/* Página de acceso denegado */}
+            <Route path="/unauthorized" element={<Unauthorized />} />
 
             {/* Página 404 */}
             <Route

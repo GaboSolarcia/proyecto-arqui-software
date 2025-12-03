@@ -11,14 +11,34 @@ const SpecialistRegistration = () => {
   const onSubmit = async (data) => {
     setIsLoading(true);
     try {
-      // Simular llamada a la API
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      const token = localStorage.getItem('authToken');
       
-      console.log('Datos del especialista:', data);
-      toast.success('Especialista registrado exitosamente');
-      reset();
+      if (!token) {
+        toast.error('No hay sesión activa');
+        setIsLoading(false);
+        return;
+      }
+
+      const response = await fetch('http://localhost:3001/api/specialists', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(data)
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        toast.success('Especialista registrado exitosamente');
+        reset();
+      } else {
+        toast.error(result.message || 'Error al registrar el especialista');
+      }
     } catch (error) {
-      toast.error('Error al registrar el especialista');
+      console.error('Error:', error);
+      toast.error('Error de conexión con el servidor');
     } finally {
       setIsLoading(false);
     }

@@ -1,75 +1,268 @@
-const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const { executeQuery } = require('../config/database');
+const User = require('../models/User');
+const Owner = require('../models/Owner');
+const { validationResult } = require('express-validator');
 
+// Registrar nuevo usuario
 exports.register = async (req, res) => {
-  const { email, password } = req.body;
+    try {
+        // Validar errores de entrada
+        const errors = validationResult(req);
+        if (!errors.isEmpty()) {
+            return res.status(400).json({
+                success: false,
+                message: 'Datos de entrada inválidos',
+                errors: errors.array()
+            });
+        }
 
-  if (!email || !password)
-    return res.status(400).json({ message: 'Faltan datos' });
+        const { username, email, password, fullName, phone, roleId, cedula } = req.body;
 
-  try {
-    const hash = await bcrypt.hash(password, 10);
+        // Verificar si el usuario ya existe
+        const existingUserByEmail = await User.findByEmail(email);
+        if (existingUserByEmail) {
+            return res.status(409).json({
+                success: false,
+                message: 'El correo electrónico ya está registrado'
+            });
+        }
 
-    await executeQuery(
-      `INSERT INTO Users (email, password_hash, role)
-       VALUES (@email, @password, @role)`,
-      {
-        email,
-        password: hash,
-        role: 'usuario'
-      }
-    );
+        const existingUserByUsername = await User.findByUsername(username);
+        if (existingUserByUsername) {
+            return res.status(409).json({
+                success: false,
+                message: 'El nombre de usuario ya está en uso'
+            });
+        }
 
-    res.status(201).json({ message: 'Usuario registrado correctamente' });
-  } catch (err) {
-    console.error(err);
-    if (err.message.includes('duplicate'))
-      return res.status(409).json({ message: 'El correo ya está registrado' });
+        // Si se proporciona cédula, verificar que no esté registrada
+        if (cedula) {
+            const existingOwnerByCedula = await Owner.findByCedula(cedula);
+            if (existingOwnerByCedula) {
+                return res.status(409).json({
+                    success: false,
+                    message: 'La cédula ya está registrada'
+                });
+            }
+        }
 
-    res.status(500).json({ message: 'Error al registrar usuario' });
-  }
+        // Crear el usuario
+        const userData = {
+            username,
+            email,
+            password,
+            fullName,
+            phone,
+            roleId: roleId || 2 // Por defecto: Usuario Normal
+        };
+
+        const newUser = await User.create(userData);
+
+        // Si el rol es "Usuario Normal" (roleId = 2), crear también un Owner
+        let newOwner = null;
+        if ((roleId || 2) === 2) {
+            const ownerData = {
+                userId: newUser.userId,
+                name: fullName,
+                cedula: cedula || null,
+                email: email,
+                phone: phone || null
+            };
+
+            try {
+                newOwner = await Owner.create(ownerData);
+            } catch (ownerError) {
+                console.error('Error creando Owner:', ownerError);
+                // No fallar el registro si falla la creación del Owner
+            }
+        }
+
+        res.status(201).json({
+            success: true,
+            message: 'Usuario registrado exitosamente' + (newOwner ? ' como cliente/dueño' : ''),
+            data: {
+                user: newUser.toJSON(),
+                owner: newOwner ? { ownerId: newOwner.OwnerId || newOwner.id } : null
+            }
+        });
+    } catch (error) {
+        console.error('Error en registro:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error al registrar usuario',
+            error: error.message
+        });
+    }
 };
 
+// Login de usuario
 exports.login = async (req, res) => {
-  const { email, password } = req.body;
+    try {
+        // Validar errores de entrada
+        const errors = validationResult(req);
+        if (!errors.isEmpty()) {
+            return res.status(400).json({
+                success: false,
+                message: 'Datos de entrada inválidos',
+                errors: errors.array()
+            });
+        }
 
-  try {
-    const result = await executeQuery(
-      'SELECT * FROM Users WHERE email = @email',
-      { email }
-    );
+        const { emailOrUsername, password } = req.body;
 
-    if (result.recordset.length === 0)
-      return res.status(401).json({ message: 'Credenciales incorrectas' });
+        // Buscar usuario por email o username
+        let user = await User.findByEmail(emailOrUsername);
+        if (!user) {
+            user = await User.findByUsername(emailOrUsername);
+        }
 
-    const user = result.recordset[0];
-    const valid = await bcrypt.compare(password, user.password_hash);
+        if (!user) {
+            return res.status(401).json({
+                success: false,
+                message: 'Credenciales incorrectas'
+            });
+        }
 
-    if (!valid)
-      return res.status(401).json({ message: 'Credenciales incorrectas' });
+        // Verificar si el usuario está activo
+        if (!user.isActive) {
+            return res.status(403).json({
+                success: false,
+                message: 'Usuario desactivado. Contacte al administrador'
+            });
+        }
 
-    const token = jwt.sign(
-      {
-        id: user.id,
-        email: user.email,
-        role: user.role
-      },
-      process.env.JWT_SECRET,
-      { expiresIn: process.env.JWT_EXPIRE }
-    );
+        // Validar contraseña
+        const isValidPassword = await user.validatePassword(password);
+        if (!isValidPassword) {
+            return res.status(401).json({
+                success: false,
+                message: 'Credenciales incorrectas'
+            });
+        }
 
-    res.json({
-      message: 'Login exitoso',
-      token,
-      user: {
-        id: user.id,
-        email: user.email,
-        role: user.role
-      }
-    });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: 'Error en login' });
-  }
+        // Actualizar último login
+        await User.updateLastLogin(user.userId);
+
+        // Generar token JWT
+        const token = jwt.sign(
+            {
+                userId: user.userId,
+                username: user.username,
+                email: user.email,
+                roleId: user.roleId,
+                roleName: user.roleName
+            },
+            process.env.JWT_SECRET || 'tu_clave_secreta_super_segura',
+            { expiresIn: process.env.JWT_EXPIRE || '24h' }
+        );
+
+        res.json({
+            success: true,
+            message: 'Login exitoso',
+            token,
+            user: user.toJSON()
+        });
+    } catch (error) {
+        console.error('Error en login:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error en el proceso de login',
+            error: error.message
+        });
+    }
+};
+
+// Obtener perfil del usuario autenticado
+exports.getProfile = async (req, res) => {
+    try {
+        // req.user viene del middleware de autenticación
+        const user = await User.findById(req.user.userId);
+
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: 'Usuario no encontrado'
+            });
+        }
+
+        res.json({
+            success: true,
+            data: user.toJSON()
+        });
+    } catch (error) {
+        console.error('Error obteniendo perfil:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error obteniendo perfil de usuario',
+            error: error.message
+        });
+    }
+};
+
+// Obtener todos los roles disponibles
+exports.getRoles = async (req, res) => {
+    try {
+        const roles = await User.getRoles();
+
+        res.json({
+            success: true,
+            data: roles
+        });
+    } catch (error) {
+        console.error('Error obteniendo roles:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error obteniendo roles',
+            error: error.message
+        });
+    }
+};
+
+// Cambiar contraseña
+exports.changePassword = async (req, res) => {
+    try {
+        const { currentPassword, newPassword } = req.body;
+        const userId = req.user.userId;
+
+        // Validar que se proporcionaron ambas contraseñas
+        if (!currentPassword || !newPassword) {
+            return res.status(400).json({
+                success: false,
+                message: 'Se requieren la contraseña actual y la nueva'
+            });
+        }
+
+        // Obtener usuario
+        const user = await User.findById(userId);
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: 'Usuario no encontrado'
+            });
+        }
+
+        // Validar contraseña actual
+        const isValidPassword = await user.validatePassword(currentPassword);
+        if (!isValidPassword) {
+            return res.status(401).json({
+                success: false,
+                message: 'Contraseña actual incorrecta'
+            });
+        }
+
+        // Cambiar contraseña
+        await User.changePassword(userId, newPassword);
+
+        res.json({
+            success: true,
+            message: 'Contraseña actualizada exitosamente'
+        });
+    } catch (error) {
+        console.error('Error cambiando contraseña:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error al cambiar contraseña',
+            error: error.message
+        });
+    }
 };

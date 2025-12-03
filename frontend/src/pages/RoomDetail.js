@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { toast } from 'react-toastify';
@@ -8,49 +8,54 @@ const RoomDetail = () => {
   const { id } = useParams();
   const { register, handleSubmit, reset } = useForm();
   const [showMaintenanceForm, setShowMaintenanceForm] = useState(false);
+  const [room, setRoom] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
-  // Datos de ejemplo
-  const [room, setRoom] = useState({
-    id: parseInt(id),
-    room_number: '101',
-    room_type: 'Habitación individual con cámara',
-    status: 'Disponible',
-    last_cleaning_date: '2025-11-24',
-    cleaned_by: 'María López',
-    maintenance_notes: [
-      {
-        id: 1,
-        date: '2025-11-15',
-        type: 'repairs',
-        description: 'Reparación de sistema de ventilación',
-        furniture_update: null,
-        recommended_repairs: null
-      },
-      {
-        id: 2,
-        date: '2025-10-20',
-        type: 'furniture',
-        description: null,
-        furniture_update: 'Actualización de cama y accesorios',
-        recommended_repairs: null
-      },
-      {
-        id: 3,
-        date: '2025-10-05',
-        type: 'recommended',
-        description: null,
-        furniture_update: null,
-        recommended_repairs: 'Se recomienda pintar las paredes'
+  useEffect(() => {
+    fetchRoomData();
+  }, [id]);
+
+  const fetchRoomData = async () => {
+    try {
+      setLoading(true);
+      const token = localStorage.getItem('authToken');
+      
+      if (!token) {
+        setError('No hay sesión activa');
+        setLoading(false);
+        return;
       }
-    ]
-  });
+
+      const response = await fetch(`http://localhost:3001/api/rooms/${id}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        setRoom(data.data);
+      } else {
+        setError(data.message || 'Error al cargar habitación');
+      }
+    } catch (err) {
+      console.error('Error fetching room:', err);
+      setError('Error de conexión con el servidor');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const getStatusColor = (status) => {
     const colors = {
       'Disponible': 'bg-green-100 text-green-800 border-green-200',
-      'Reservada': 'bg-blue-100 text-blue-800 border-blue-200',
-      'En mantenimiento': 'bg-yellow-100 text-yellow-800 border-yellow-200',
-      'Cerrada': 'bg-red-100 text-red-800 border-red-200'
+      'Ocupada': 'bg-red-100 text-red-800 border-red-200',
+      'En Limpieza': 'bg-blue-100 text-blue-800 border-blue-200',
+      'En Mantenimiento': 'bg-yellow-100 text-yellow-800 border-yellow-200',
+      'Fuera de Servicio': 'bg-gray-100 text-gray-800 border-gray-200'
     };
     return colors[status] || 'bg-gray-100 text-gray-800 border-gray-200';
   };
@@ -75,23 +80,8 @@ const RoomDetail = () => {
 
   const handleAddMaintenance = async (data) => {
     try {
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
-      const newNote = {
-        id: room.maintenance_notes.length + 1,
-        date: new Date().toISOString().split('T')[0],
-        type: data.maintenance_type,
-        description: data.maintenance_type === 'repairs' ? data.description : null,
-        furniture_update: data.maintenance_type === 'furniture' ? data.furniture_update : null,
-        recommended_repairs: data.maintenance_type === 'recommended' ? data.recommended_repairs : null
-      };
-      
-      setRoom({
-        ...room,
-        maintenance_notes: [newNote, ...room.maintenance_notes]
-      });
-      
-      toast.success('Nota de mantenimiento agregada');
+      // TODO: Implementar API para agregar notas de mantenimiento
+      toast.info('Funcionalidad en desarrollo');
       setShowMaintenanceForm(false);
       reset();
     } catch (error) {
@@ -100,19 +90,36 @@ const RoomDetail = () => {
   };
 
   const handleDeleteMaintenance = (noteId) => {
-    setRoom({
-      ...room,
-      maintenance_notes: room.maintenance_notes.filter(note => note.id !== noteId)
-    });
-    toast.success('Nota eliminada');
+    // TODO: Implementar API para eliminar notas de mantenimiento
+    toast.info('Funcionalidad en desarrollo');
   };
 
   const handleChangeStatus = async (newStatus) => {
     try {
-      await new Promise(resolve => setTimeout(resolve, 500));
-      setRoom({ ...room, status: newStatus });
-      toast.success('Estado actualizado');
+      const token = localStorage.getItem('authToken');
+
+      const response = await fetch(`http://localhost:3001/api/rooms/${id}/status`, {
+        method: 'PATCH',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          status: newStatus
+        })
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        // Recargar los datos de la habitación para reflejar el cambio
+        await fetchRoomData();
+        toast.success('Estado actualizado exitosamente');
+      } else {
+        toast.error(data.message || 'Error al actualizar estado');
+      }
     } catch (error) {
+      console.error('Error updating room status:', error);
       toast.error('Error al cambiar estado');
     }
   };
@@ -135,6 +142,32 @@ const RoomDetail = () => {
     return colors[type] || 'bg-gray-100 text-gray-800';
   };
 
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Cargando habitación...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error || !room) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <AlertCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
+          <h3 className="text-lg font-medium text-gray-800 mb-2">Error al cargar habitación</h3>
+          <p className="text-gray-600 mb-4">{error || 'Habitación no encontrada'}</p>
+          <Link to="/rooms" className="btn-primary">
+            Volver a Habitaciones
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="max-w-6xl mx-auto">
       {/* Header */}
@@ -144,9 +177,9 @@ const RoomDetail = () => {
             <ArrowLeft className="h-5 w-5" />
           </Link>
           <Home className="h-6 w-6 text-blue-600 mr-2" />
-          <h1 className="text-3xl font-bold text-gray-800">Habitación {room.room_number}</h1>
+          <h1 className="text-3xl font-bold text-gray-800">Habitación {room.RoomNumber}</h1>
         </div>
-        <p className="text-gray-600">{room.room_type}</p>
+        <p className="text-gray-600">{room.RoomTypeName}</p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -158,17 +191,17 @@ const RoomDetail = () => {
             <div className="space-y-4">
               <div className="flex items-center justify-between py-3 border-b border-gray-200">
                 <span className="text-gray-600">Estado actual:</span>
-                <span className={`px-4 py-2 rounded-full text-sm font-medium border ${getStatusColor(room.status)}`}>
-                  {room.status}
+                <span className={`px-4 py-2 rounded-full text-sm font-medium border ${getStatusColor(room.StatusName)}`}>
+                  {room.StatusName}
                 </span>
               </div>
               <div className="flex items-center justify-between py-3 border-b border-gray-200">
                 <span className="text-gray-600">Tipo de habitación:</span>
-                <span className="font-medium text-gray-800">{room.room_type}</span>
+                <span className="font-medium text-gray-800">{room.RoomTypeName}</span>
               </div>
               <div className="flex items-center justify-between py-3">
                 <span className="text-gray-600">Número de habitación:</span>
-                <span className="font-medium text-gray-800 text-lg">{room.room_number}</span>
+                <span className="font-medium text-gray-800 text-lg">{room.RoomNumber}</span>
               </div>
             </div>
 
@@ -178,31 +211,31 @@ const RoomDetail = () => {
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                 <button
                   onClick={() => handleChangeStatus('Disponible')}
-                  disabled={room.status === 'Disponible'}
+                  disabled={room.StatusName === 'Disponible'}
                   className="px-3 py-2 bg-green-50 text-green-700 rounded-lg hover:bg-green-100 disabled:opacity-50 disabled:cursor-not-allowed text-sm"
                 >
                   Disponible
                 </button>
                 <button
-                  onClick={() => handleChangeStatus('Reservada')}
-                  disabled={room.status === 'Reservada'}
-                  className="px-3 py-2 bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+                  onClick={() => handleChangeStatus('Ocupada')}
+                  disabled={room.StatusName === 'Ocupada'}
+                  className="px-3 py-2 bg-red-50 text-red-700 rounded-lg hover:bg-red-100 disabled:opacity-50 disabled:cursor-not-allowed text-sm"
                 >
-                  Reservada
+                  Ocupada
                 </button>
                 <button
-                  onClick={() => handleChangeStatus('En mantenimiento')}
-                  disabled={room.status === 'En mantenimiento'}
+                  onClick={() => handleChangeStatus('En Mantenimiento')}
+                  disabled={room.StatusName === 'En Mantenimiento'}
                   className="px-3 py-2 bg-yellow-50 text-yellow-700 rounded-lg hover:bg-yellow-100 disabled:opacity-50 disabled:cursor-not-allowed text-sm"
                 >
                   Mantenimiento
                 </button>
                 <button
-                  onClick={() => handleChangeStatus('Cerrada')}
-                  disabled={room.status === 'Cerrada'}
-                  className="px-3 py-2 bg-red-50 text-red-700 rounded-lg hover:bg-red-100 disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+                  onClick={() => handleChangeStatus('Fuera de Servicio')}
+                  disabled={room.StatusName === 'Fuera de Servicio'}
+                  className="px-3 py-2 bg-gray-50 text-gray-700 rounded-lg hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed text-sm"
                 >
-                  Cerrada
+                  Fuera Servicio
                 </button>
               </div>
             </div>
@@ -221,17 +254,19 @@ const RoomDetail = () => {
                 <div className="flex-1">
                   <p className="text-sm font-medium text-blue-800">Última limpieza registrada</p>
                   <p className="text-lg font-bold text-blue-900 mt-1">
-                    {new Date(room.last_cleaning_date).toLocaleDateString('es-ES', { 
+                    {room.LastCleaningDate ? new Date(room.LastCleaningDate).toLocaleDateString('es-ES', { 
                       weekday: 'long', 
                       year: 'numeric', 
                       month: 'long', 
                       day: 'numeric' 
-                    })}
+                    }) : 'No registrada'}
                   </p>
-                  <div className="flex items-center mt-2">
-                    <User className="h-4 w-4 text-blue-600 mr-1" />
-                    <p className="text-sm text-blue-700">Personal: {room.cleaned_by}</p>
-                  </div>
+                  {room.CleanedByName && (
+                    <div className="flex items-center mt-2">
+                      <User className="h-4 w-4 text-blue-600 mr-1" />
+                      <p className="text-sm text-blue-700">Personal: {room.CleanedByName}</p>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -318,40 +353,14 @@ const RoomDetail = () => {
             )}
 
             <div className="space-y-3">
-              {room.maintenance_notes.length === 0 ? (
+              {!room.MaintenanceNotes || room.MaintenanceNotes === '' ? (
                 <p className="text-center text-gray-500 py-8">No hay notas de mantenimiento registradas</p>
               ) : (
-                room.maintenance_notes.map((note) => (
-                  <div key={note.id} className="border border-gray-200 rounded-lg p-4 hover:bg-gray-50 transition">
-                    <div className="flex items-start justify-between mb-2">
-                      <div className="flex items-center">
-                        <span className={`px-3 py-1 rounded-full text-xs font-medium ${getMaintenanceTypeColor(note.type)}`}>
-                          {getMaintenanceTypeLabel(note.type)}
-                        </span>
-                        <span className="ml-3 text-sm text-gray-500">
-                          {new Date(note.date).toLocaleDateString('es-ES')}
-                        </span>
-                      </div>
-                      <button
-                        onClick={() => handleDeleteMaintenance(note.id)}
-                        className="text-red-600 hover:text-red-800"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </div>
-                    <div className="text-sm text-gray-700">
-                      {note.description && <p><strong>Reparación:</strong> {note.description}</p>}
-                      {note.furniture_update && <p><strong>Mobiliario:</strong> {note.furniture_update}</p>}
-                      {note.recommended_repairs && (
-                        <div className="flex items-start mt-2 p-2 bg-yellow-50 rounded">
-                          <AlertCircle className="h-4 w-4 text-yellow-600 mr-2 mt-0.5" />
-                          <p className="text-yellow-800"><strong>Recomendación:</strong> {note.recommended_repairs}</p>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                ))
+                <div className="border border-gray-200 rounded-lg p-4">
+                  <p className="text-sm text-gray-700">{room.MaintenanceNotes}</p>
+                </div>
               )}
+
             </div>
           </div>
         </div>

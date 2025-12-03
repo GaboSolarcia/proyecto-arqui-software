@@ -1,66 +1,59 @@
-import React, { useState } from 'react';
-import { Link, useLocation } from 'react-router-dom';
-import { Menu, X, Heart, Home as HomeIcon, Calendar, Stethoscope, UserCheck, Users, Home } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { Menu, X, Heart, Home as HomeIcon, Calendar, Stethoscope, UserCheck, Users, Home, LogOut, Camera } from 'lucide-react';
 import logo from '../assets/logo.png';
 
 const Navbar = () => {
   const [isOpen, setIsOpen] = useState(false);
+  const [role, setRole] = useState(null);
+  const [user, setUser] = useState(null);
   const location = useLocation();
+  const navigate = useNavigate();
 
-  // leer rol
-  //  const role = localStorage.getItem('role');
+  useEffect(() => {
+    // Leer rol y usuario del localStorage
+    const storedRole = localStorage.getItem('role');
+    const storedUser = localStorage.getItem('user');
+    setRole(storedRole);
+    if (storedUser) {
+      setUser(JSON.parse(storedUser));
+    }
+  }, [location]);
 
-   /* menu admin
- 
- const navigationAdmin = [
-    { name: 'Inicio', href: '/', icon: HomeIcon },
-    { name: 'Habitaciones', href: '/rooms', icon: HomeIcon },
-    { name: 'Especialistas', href: '/specialists', icon: Users },
-    { name: 'Veterinarios', href: '/veterinarians', icon: Stethoscope },
-    { name: 'Dueños', href: '/owners', icon: UserCheck },
-  ];
-
-  // menu usuario
-
-    const navigationUser = [
-    { name: 'Inicio', href: '/', icon: HomeIcon },
-    { name: 'Registrar Mascota', href: '/pets/register', icon: Heart },
-    { name: 'Reservas', href: '/reservations', icon: Calendar },
-  ];
-
-  //seleccionar segun rol
-
- const navigation =
-    role === 'admin' ? navigationAdmin : navigationUser;
-
-  const isActive = (path) => {
-    if (path === '/') return location.pathname === '/';
-    return location.pathname.startsWith(path);
-  };
-
-  // logout
-    const handleLogout = () => {
-    localStorage.clear();
-    window.location.href = '/login';
-  };
-
-  */
- 
-  const navigation = [
+  // Menú para administradores
+  const navigationAdmin = [
     { name: 'Inicio', href: '/', icon: HomeIcon },
     { name: 'Mascotas', href: '/pets', icon: Heart },
     { name: 'Reservas', href: '/reservations', icon: Calendar },
     { name: 'Habitaciones', href: '/rooms', icon: Home },
+    { name: 'Monitoreo', href: '/pet-monitoring', icon: Camera },
     { name: 'Especialistas', href: '/specialists', icon: Users },
-    { name: 'Veterinarios', href: '/veterinarians', icon: Stethoscope },
     { name: 'Dueños', href: '/owners', icon: UserCheck },
   ];
+
+  // Menú para clientes
+  const navigationClient = [
+    { name: 'Inicio', href: '/', icon: HomeIcon },
+    { name: 'Mis Mascotas', href: '/pets', icon: Heart },
+    { name: 'Mis Reservas', href: '/reservations', icon: Calendar },
+    { name: 'Nueva Reserva', href: '/reservations/book', icon: Calendar },
+    { name: 'Monitoreo', href: '/pet-monitoring', icon: Camera },
+  ];
+
+  // Seleccionar menú según rol
+  const navigation = role === 'Administrador' ? navigationAdmin : navigationClient;
 
   const isActive = (path) => {
     if (path === '/') {
       return location.pathname === '/';
     }
     return location.pathname.startsWith(path);
+  };
+
+  // Logout
+  const handleLogout = () => {
+    localStorage.clear();
+    navigate('/login');
   };
 
   return (
@@ -104,6 +97,24 @@ const Navbar = () => {
                 </Link>
               );
             })}
+
+            {/* User info and logout button */}
+            {user && (
+              <div className="flex items-center space-x-3 ml-4 pl-4 border-l border-gray-300">
+                <div className="text-right">
+                  <p className="text-sm font-medium text-gray-800">{user.fullName || user.username}</p>
+                  <p className="text-xs text-gray-500">{role}</p>
+                </div>
+                <button
+                  onClick={handleLogout}
+                  className="flex items-center space-x-2 px-3 py-2 rounded-md text-sm font-medium text-red-600 hover:text-red-700 hover:bg-red-50 transition-colors duration-200"
+                  title="Cerrar sesión"
+                >
+                  <LogOut className="h-4 w-4" />
+                  <span>Salir</span>
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Mobile menu button */}
@@ -142,6 +153,26 @@ const Navbar = () => {
                   </Link>
                 );
               })}
+
+              {/* Mobile user info and logout */}
+              {user && (
+                <div className="pt-4 mt-4 border-t border-gray-200">
+                  <div className="px-3 py-2 mb-2">
+                    <p className="text-sm font-medium text-gray-800">{user.fullName || user.username}</p>
+                    <p className="text-xs text-gray-500">{role}</p>
+                  </div>
+                  <button
+                    onClick={() => {
+                      handleLogout();
+                      setIsOpen(false);
+                    }}
+                    className="w-full flex items-center space-x-3 px-3 py-2 rounded-md text-base font-medium text-red-600 hover:text-red-700 hover:bg-red-50 transition-colors duration-200"
+                  >
+                    <LogOut className="h-5 w-5" />
+                    <span>Cerrar Sesión</span>
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         )}

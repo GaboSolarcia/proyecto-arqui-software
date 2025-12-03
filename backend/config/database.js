@@ -4,13 +4,14 @@ require('dotenv').config();
 // ⚙️ Configuración de conexión a SQL Server
 const config = {
     server: process.env.DB_SERVER || 'localhost',
+    port: parseInt(process.env.DB_PORT) || 1433,
     database: process.env.DB_NAME || 'CuidadosLosPatitos',
-    user: process.env.DB_USER || 'sa',
-    password: process.env.DB_PASSWORD || 'TuPasswordSegura123!',
     options: {
-        encrypt: false,                 // para conexiones locales
+        encrypt: false,
         trustServerCertificate: true,
-        instanceName: process.env.DB_INSTANCE || 'SQL2022'
+        enableArithAbort: true,
+        trustedConnection: true,
+        instanceName: process.env.DB_INSTANCE || ''
     },
     pool: {
         max: 10,
@@ -18,6 +19,16 @@ const config = {
         idleTimeoutMillis: 30000
     }
 };
+
+// Si hay usuario y contraseña configurados, usar SQL Authentication
+if (process.env.DB_USER && process.env.DB_PASSWORD) {
+    config.user = process.env.DB_USER;
+    config.password = process.env.DB_PASSWORD;
+    delete config.options.trustedConnection;
+    config.authentication = {
+        type: 'default'
+    };
+}
 
 let pool;
 

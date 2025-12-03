@@ -44,12 +44,29 @@ class Room {
     static async findAll() {
         try {
             const query = `
-                SELECT * FROM Rooms
-                ORDER BY room_number ASC
+                SELECT 
+                    r.RoomId,
+                    r.RoomNumber,
+                    r.RoomTypeId,
+                    rt.RoomTypeName,
+                    r.RoomStatusId,
+                    rs.StatusName AS StatusName,
+                    r.Floor,
+                    r.LastCleaningDate,
+                    r.CleanedBy,
+                    s.EmployeeName AS CleanedByName,
+                    r.Notes AS MaintenanceNotes,
+                    r.CreatedAt,
+                    r.UpdatedAt
+                FROM Rooms r
+                LEFT JOIN Cat_RoomTypes rt ON r.RoomTypeId = rt.RoomTypeId
+                LEFT JOIN Cat_RoomStatuses rs ON r.RoomStatusId = rs.RoomStatusId
+                LEFT JOIN Specialists s ON r.CleanedBy = s.SpecialistId
+                ORDER BY r.RoomNumber ASC
             `;
             
             const result = await executeQuery(query);
-            return result.recordset.map(room => new Room(room));
+            return result.recordset;
         } catch (error) {
             throw new Error(`Error obteniendo habitaciones: ${error.message}`);
         }
@@ -59,8 +76,25 @@ class Room {
     static async findById(id) {
         try {
             const query = `
-                SELECT * FROM Rooms
-                WHERE id = @id
+                SELECT 
+                    r.RoomId,
+                    r.RoomNumber,
+                    r.RoomTypeId,
+                    rt.RoomTypeName,
+                    r.RoomStatusId,
+                    rs.StatusName AS StatusName,
+                    r.Floor,
+                    r.LastCleaningDate,
+                    r.CleanedBy,
+                    s.EmployeeName AS CleanedByName,
+                    r.Notes AS MaintenanceNotes,
+                    r.CreatedAt,
+                    r.UpdatedAt
+                FROM Rooms r
+                LEFT JOIN Cat_RoomTypes rt ON r.RoomTypeId = rt.RoomTypeId
+                LEFT JOIN Cat_RoomStatuses rs ON r.RoomStatusId = rs.RoomStatusId
+                LEFT JOIN Specialists s ON r.CleanedBy = s.SpecialistId
+                WHERE r.RoomId = @id
             `;
             
             const result = await executeQuery(query, { id });
@@ -69,7 +103,7 @@ class Room {
                 return null;
             }
             
-            return new Room(result.recordset[0]);
+            return result.recordset[0];
         } catch (error) {
             throw new Error(`Error obteniendo habitación: ${error.message}`);
         }
@@ -79,13 +113,28 @@ class Room {
     static async findByStatus(status) {
         try {
             const query = `
-                SELECT * FROM Rooms
-                WHERE status = @status
-                ORDER BY room_number ASC
+                SELECT 
+                    r.RoomId,
+                    r.RoomNumber,
+                    r.RoomTypeId,
+                    rt.RoomTypeName,
+                    r.RoomStatusId,
+                    rs.StatusName AS StatusName,
+                    r.Floor,
+                    r.LastCleaningDate,
+                    r.CleanedBy,
+                    s.EmployeeName AS CleanedByName,
+                    r.Notes AS MaintenanceNotes
+                FROM Rooms r
+                LEFT JOIN Cat_RoomTypes rt ON r.RoomTypeId = rt.RoomTypeId
+                INNER JOIN Cat_RoomStatuses rs ON r.RoomStatusId = rs.RoomStatusId
+                LEFT JOIN Specialists s ON r.CleanedBy = s.SpecialistId
+                WHERE rs.StatusName = @status
+                ORDER BY r.RoomNumber ASC
             `;
             
             const result = await executeQuery(query, { status });
-            return result.recordset.map(room => new Room(room));
+            return result.recordset;
         } catch (error) {
             throw new Error(`Error obteniendo habitaciones por estado: ${error.message}`);
         }
@@ -95,9 +144,18 @@ class Room {
     static async findAvailable() {
         try {
             const query = `
-                SELECT * FROM Rooms
-                WHERE status = 'Disponible'
-                ORDER BY room_number ASC
+                SELECT 
+                    r.RoomId,
+                    r.RoomNumber,
+                    r.RoomTypeId,
+                    rt.RoomTypeName,
+                    r.RoomStatusId,
+                    rs.StatusName AS StatusName
+                FROM Rooms r
+                LEFT JOIN Cat_RoomTypes rt ON r.RoomTypeId = rt.RoomTypeId
+                INNER JOIN Cat_RoomStatuses rs ON r.RoomStatusId = rs.RoomStatusId
+                WHERE rs.StatusName = 'Disponible'
+                ORDER BY r.RoomNumber ASC
             `;
             
             const result = await executeQuery(query);
@@ -231,21 +289,31 @@ class Room {
     // Cambiar estado de habitación
     static async changeStatus(id, newStatus) {
         try {
+            // Mapear nombre de estado a RoomStatusId
+            const statusMap = {
+                'Disponible': 1,
+                'Ocupada': 2,
+                'En Limpieza': 3,
+                'En Mantenimiento': 4,
+                'Fuera de Servicio': 5
+            };
+
+            const statusId = statusMap[newStatus];
+            if (!statusId) {
+                throw new Error(`Estado inválido: ${newStatus}`);
+            }
+
             const query = `
                 UPDATE Rooms
-                SET status = @status,
-                    updated_at = GETDATE()
-                OUTPUT INSERTED.*
-                WHERE id = @id
+                SET RoomStatusId = @statusId,
+                    UpdatedAt = GETDATE()
+                WHERE RoomId = @roomId
             `;
             
-            const result = await executeQuery(query, { id, status: newStatus });
+            await executeQuery(query, { roomId: id, statusId });
             
-            if (result.recordset.length === 0) {
-                return null;
-            }
-            
-            return new Room(result.recordset[0]);
+            // Obtener la habitación actualizada
+            return await this.findById(id);
         } catch (error) {
             throw new Error(`Error cambiando estado de habitación: ${error.message}`);
         }

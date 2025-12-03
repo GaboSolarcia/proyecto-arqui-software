@@ -250,8 +250,8 @@ npm test               # Ejecutar tests
 Este proyecto es para fines académicos de la materia de Arquitectura de Software.
 
 ### Equipo de Desarrollo
-- 👨‍💻 **Desarrollador Principal:** [Tu Nombre]
-- 🏛️ **Institución:** Universidad (UIA)
+- 👨‍💻 **Desarrollador Principal:**
+- 🏛️ **Institución:** UIA
 - 📚 **Materia:** Arquitectura de Software
 
 ## 📋 Requerimientos Cumplidos
